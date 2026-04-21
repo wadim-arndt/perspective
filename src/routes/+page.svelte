@@ -5,11 +5,28 @@
 	// ─── Fallback coordinates (Berlin) ────────────────────────────────────────
 	const BERLIN: [number, number] = [13.405, 52.52];
 
-	// Free MapLibre-compatible dark style via OpenMapTiles / CARTO Basemaps
-	// No token required.
-	const DARK_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+	// Free MapLibre-compatible satellite style
+	const SATELLITE_STYLE = {
+		version: 8,
+		sources: {
+			satellite: {
+				type: 'raster',
+				tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+				tileSize: 256
+			},
+			reference: {
+				type: 'raster',
+				tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],
+				tileSize: 256
+			}
+		},
+		layers: [
+			{ id: 'satellite-layer', type: 'raster', source: 'satellite' },
+			{ id: 'reference-layer', type: 'raster', source: 'reference' }
+		]
+	};
 
-	type AppState = 'idle' | 'traveling' | 'exploring';
+	type AppState = 'idle' | 'zooming_out' | 'zooming_in' | 'arrived' | 'wandering';
 
 	let mapContainer: HTMLDivElement;
 	let map = $state<MapLibreMap | null>(null);
@@ -19,16 +36,7 @@
 	let searchQuery = $state('');
 	let isSearching = $state(false);
 	
-	let exploreAnimationFrame: number | null = null;
-
-	// Derived values for smooth transitions
-	// Phase 1: Map (Zoom 13 -> 6)
-	// Phase 2: Transition (Zoom 6 -> 2)
-	// Phase 3: Cosmic (Zoom 2 -> 0)
-	
-	const transitionProgress = $derived(Math.max(0, Math.min(1, (6 - currentZoom) / 4))); // 0 at z6, 1 at z2
-	const cosmicProgress = $derived(Math.max(0, Math.min(1, (3 - currentZoom) / 3)));     // 0 at z3, 1 at z0
-	const earthScale = $derived(0.8 + (1 - transitionProgress) * 0.4); // slightly bigger as we zoom in
+	let exploreTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	const toggleMapInteractivity = (enabled: boolean) => {
 		if (!map) return;
@@ -48,31 +56,35 @@
 	};
 
 	const stopExploration = () => {
-		if (exploreAnimationFrame) {
-			cancelAnimationFrame(exploreAnimationFrame);
-			exploreAnimationFrame = null;
+		if (exploreTimeout) {
+			clearTimeout(exploreTimeout);
+			exploreTimeout = null;
 		}
+		if (map) map.stop();
 	};
 
 	const startExploration = () => {
-		if (!map) return;
-		let startTime = performance.now();
-		const explore = (time: number) => {
-			if (appState !== 'exploring' || !map) return;
-			const dt = time - startTime;
-			startTime = time;
-			
-			// Gently rotate bearing and slightly adjust pitch
-			const bearing = map.getBearing() + (dt * 0.001);
-			const pitch = 50 + Math.sin(time * 0.0001) * 5;
-			
-			map.jumpTo({ bearing, pitch });
-			
-			if (appState === 'exploring') {
-				exploreAnimationFrame = requestAnimationFrame(explore);
+		if (!map || appState !== 'wandering') return;
+		
+		const center = map.getCenter();
+		// pick a random offset roughly within the region
+		const offsetLat = (Math.random() - 0.5) * 0.5;
+		const offsetLng = (Math.random() - 0.5) * 0.5;
+		
+		map.flyTo({
+			center: [center.lng + offsetLng, center.lat + offsetLat],
+			zoom: 7 + Math.random() * 2,
+			speed: 0.1, // very slow
+			curve: 1,
+			pitch: 30 + Math.random() * 20,
+			essential: true
+		});
+		
+		map.once('moveend', () => {
+			if (appState === 'wandering') {
+				exploreTimeout = setTimeout(startExploration, 2000);
 			}
-		};
-		exploreAnimationFrame = requestAnimationFrame(explore);
+		});
 	};
 
 	onMount(async () => {
@@ -86,11 +98,17 @@
 			// Don't trigger if user is typing in the search input
 			if (e.target instanceof HTMLInputElement) return;
 
-			if (e.code === 'Space' && map && appState !== 'traveling') {
+			if (e.code === 'KeyQ' && appState === 'wandering' && map) {
+				stopExploration();
+				appState = 'arrived';
+				return;
+			}
+
+			if (e.code === 'Space' && map && appState !== 'zooming_out' && appState !== 'zooming_in') {
 				e.preventDefault(); // prevent scroll
 				
-				if (appState === 'exploring') stopExploration();
-				appState = 'traveling';
+				if (appState === 'wandering') stopExploration();
+				appState = 'zooming_out';
 				toggleMapInteractivity(false);
 
 				map.flyTo({
@@ -102,7 +120,7 @@
 				});
 				
 				map.once('moveend', () => {
-					if (appState === 'traveling') {
+					if (appState === 'zooming_out') {
 						appState = 'idle';
 						toggleMapInteractivity(true);
 					}
@@ -117,7 +135,7 @@
 		const initMap = (center: [number, number]) => {
 			map = new maplibregl.Map({
 				container: mapContainer,
-				style: DARK_STYLE,
+				style: SATELLITE_STYLE as any,
 				center,
 				zoom: 13,
 				pitch: 25,         // slight tilt — atmospheric but subtle
@@ -193,7 +211,7 @@
 					const { lat, lon } = data[0];
 					const destination: [number, number] = [parseFloat(lon), parseFloat(lat)];
 					
-					appState = 'traveling';
+					appState = 'zooming_out';
 					
 					// Disable interactivity directly here since map is available
 					map.dragPan.disable();
@@ -202,19 +220,35 @@
 					map.touchZoomRotate.disable();
 					map.keyboard.disable();
 
+					// Stage 1: Zoom out to global view
 					map.flyTo({
-						center: destination,
-						zoom: 5.5, // A good overview zoom for an average country
-						speed: 0.15, // VERY slow
-						curve: 1.8, // swooping high up into the cosmic space layer
-						pitch: 45,
+						zoom: 2,
+						speed: 0.5,
+						curve: 1,
+						pitch: 0,
 						essential: true
 					});
 					
 					map.once('moveend', () => {
-						if (appState === 'traveling') {
-							appState = 'exploring';
-							startExploration();
+						if (appState === 'zooming_out') {
+							appState = 'zooming_in';
+							
+							// Stage 2: Zoom in to target destination
+							map.flyTo({
+								center: destination,
+								zoom: 5.5, // A good overview zoom for an average country
+								speed: 0.4,
+								curve: 1.2,
+								pitch: 25,
+								essential: true
+							});
+							
+							map.once('moveend', () => {
+								if (appState === 'zooming_in') {
+									appState = 'arrived';
+									// Wait for user to trigger wandering
+								}
+							});
 						}
 					});
 				} else {
@@ -260,50 +294,23 @@
 			{#if isSearching}
 				<div class="search-spinner"></div>
 			{/if}
-			{#if appState !== 'idle'}
+			{#if appState !== 'idle' && appState !== 'arrived'}
 				<div class="state-indicator">
-					{appState === 'traveling' ? 'Traveling...' : 'Wandering...'}
+					{appState === 'zooming_out' || appState === 'zooming_in' ? 'Traveling...' : 'Wandering...'}
 				</div>
+			{/if}
+			{#if appState === 'arrived'}
+				<button class="wander-btn" onclick={() => {
+					appState = 'wandering';
+					startExploration();
+				}}>Wander</button>
 			{/if}
 		</div>
 	</div>
 
-	<!-- Layer 0: Deep Space -->
-	<div class="layer cosmic-background">
-		<div class="stars"></div>
-		<div class="stars-far"></div>
-	</div>
-
-	<!-- Layer 1: Abstract Earth Hint -->
-	<div 
-		class="layer earth-impression" 
-		style:opacity={transitionProgress}
-		style:transform="scale({earthScale})"
-	>
-		<div class="earth-glow"></div>
-		<div class="earth-container">
-			<div class="earth-sphere">
-				<div class="earth-surface"></div>
-				<div class="earth-clouds"></div>
-				<div class="earth-haze"></div>
-				<div class="earth-terminator"></div>
-			</div>
-		</div>
-	</div>
-
-	<!-- Layer 2: Map & Transition -->
-	<div 
-		class="layer map-wrap"
-		style:filter="blur({transitionProgress * 20}px) brightness({1 - transitionProgress * 0.7})"
-		style:opacity={1 - cosmicProgress}
-	>
+	<!-- Layer: Map -->
+	<div class="layer map-wrap">
 		<div bind:this={mapContainer} class="map" />
-		
-		<!-- Visual Overlay for extra atmosphere -->
-		<div 
-			class="transition-overlay"
-			style:opacity={transitionProgress * 0.5}
-		></div>
 	</div>
 </div>
 
@@ -426,10 +433,24 @@
 		inset: 0;
 		width: 100%;
 		height: 100%;
-		transition: opacity 0.5s cubic-bezier(0.2, 0, 0.4, 1), 
-		            filter 0.5s cubic-bezier(0.2, 0, 0.4, 1),
-		            transform 0.5s cubic-bezier(0.2, 0, 0.4, 1);
 		pointer-events: none; /* Default layer behavior */
+	}
+
+	.wander-btn {
+		background: rgba(255, 255, 255, 0.1);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		color: #fff;
+		font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+		font-size: 13px;
+		letter-spacing: 0.05em;
+		padding: 6px 14px;
+		border-radius: 20px;
+		cursor: pointer;
+		margin-left: 12px;
+		transition: all 0.2s;
+	}
+	.wander-btn:hover {
+		background: rgba(255, 255, 255, 0.2);
 	}
 
 	/* ── Layer 2: Map --------------------------------------------------------- */
@@ -444,140 +465,7 @@
 		height: 100%;
 	}
 
-	/* Subtle glass overlay on top of map during transition */
-	.transition-overlay {
-		position: absolute;
-		inset: 0;
-		background: radial-gradient(circle at center, transparent 30%, rgba(8, 10, 20, 0.8) 100%);
-		pointer-events: none;
-	}
-
-	/* ── Layer 1: Earth Impression --------------------------------------------- */
-	.earth-impression {
-		z-index: 5;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		pointer-events: none;
-		will-change: transform, opacity;
-	}
-
-	.earth-container {
-		position: relative;
-		width: 60vh;
-		height: 60vh;
-		border-radius: 50%;
-		/* Ensures everything inside stays spherical */
-		mask-image: radial-gradient(circle, black 100%, transparent 100%);
-		-webkit-mask-image: radial-gradient(circle, black 100%, transparent 100%);
-		overflow: hidden;
-		box-shadow: 0 0 100px rgba(56, 189, 248, 0.15);
-	}
-
-	.earth-sphere {
-		position: absolute;
-		inset: 0;
-		width: 100%;
-		height: 100%;
-		background: #040815; /* Base deep space blue */
-		border-radius: 50%;
-	}
-
-	.earth-surface {
-		position: absolute;
-		inset: 0;
-		background-image: url('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg');
-		background-size: auto 100%;
-		background-repeat: repeat-x;
-		opacity: 0.9;
-		animation: rotate-earth 120s linear infinite;
-		/* Cinematic land color grading */
-		filter: contrast(1.1) brightness(0.9) saturate(1.2);
-	}
-
-	.earth-clouds {
-		position: absolute;
-		inset: -1%; /* Slightly larger for depth */
-		background-image: url('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_clouds_1024.png');
-		background-size: auto 100%;
-		background-repeat: repeat-x;
-		opacity: 0.6;
-		mix-blend-mode: screen;
-		animation: rotate-clouds 80s linear infinite;
-	}
-
-	.earth-haze {
-		position: absolute;
-		inset: 0;
-		/* Inner blue scattering / Fresnel look */
-		background: radial-gradient(circle at center, transparent 40%, rgba(56, 189, 248, 0.3) 75%, rgba(56, 189, 248, 0.6) 100%);
-		pointer-events: none;
-	}
-
-	.earth-terminator {
-		position: absolute;
-		inset: 0;
-		/* Fixed shadow relative to camera to simulate sun light source from top-left */
-		background: radial-gradient(circle at 30% 30%, transparent 20%, rgba(0, 0, 0, 0.4) 60%, rgba(0, 0, 0, 0.9) 100%);
-		pointer-events: none;
-	}
-
-	.earth-glow {
-		position: absolute;
-		width: 70vh;
-		height: 70vh;
-		background: radial-gradient(circle, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.05) 50%, transparent 75%);
-		border-radius: 50%;
-		filter: blur(40px);
-		z-index: -1;
-	}
-
-	@keyframes rotate-earth {
-		from { background-position: 0 0; }
-		to { background-position: 200% 0; }
-	}
-
-	@keyframes rotate-clouds {
-		from { background-position: 0 0; }
-		to { background-position: -200% 0; }
-	}
-
-	/* ── Layer 0: Cosmic Background -------------------------------------------- */
-	.cosmic-background {
-		z-index: 1;
-		background: radial-gradient(circle at center, #0a0a1a 0%, #020205 100%);
-		overflow: hidden;
-	}
-
-	/* Simple starfield generator */
-	.stars {
-		position: absolute;
-		inset: 0;
-		background-image: 
-			radial-gradient(1px 1px at 20px 30px, #fff, rgba(0,0,0,0)),
-			radial-gradient(1.5px 1.5px at 100px 150px, #fff, rgba(0,0,0,0)),
-			radial-gradient(1px 1px at 200px 80px, #fff, rgba(0,0,0,0)),
-			radial-gradient(2px 2px at 300px 250px, #fff, rgba(0,0,0,0));
-		background-size: 400px 400px;
-		opacity: 0.4;
-		animation: drift 120s linear infinite;
-	}
-
-	.stars-far {
-		position: absolute;
-		inset: 0;
-		background-image: 
-			radial-gradient(1px 1px at 50px 50px, #fff, rgba(0,0,0,0)),
-			radial-gradient(1px 1px at 150px 200px, #fff, rgba(0,0,0,0));
-		background-size: 300px 300px;
-		opacity: 0.2;
-		animation: drift 200s linear infinite reverse;
-	}
-
-	@keyframes drift {
-		from { transform: rotate(0deg) scale(1); }
-		to { transform: rotate(360deg) scale(1.2); }
-	}
+	/* Subtle glass overlay on top of map removed for clarity */
 
 	/* ── "You are here" marker ------------------------------------------------ */
 	:global(.you-are-here) {
