@@ -141,7 +141,14 @@
 		style:transform="scale({earthScale})"
 	>
 		<div class="earth-glow"></div>
-		<div class="earth-sphere"></div>
+		<div class="earth-container">
+			<div class="earth-sphere">
+				<div class="earth-surface"></div>
+				<div class="earth-clouds"></div>
+				<div class="earth-haze"></div>
+				<div class="earth-terminator"></div>
+			</div>
+		</div>
 	</div>
 
 	<!-- Layer 2: Map & Transition -->
@@ -221,28 +228,84 @@
 		will-change: transform, opacity;
 	}
 
-	.earth-sphere {
+	.earth-container {
+		position: relative;
 		width: 60vh;
 		height: 60vh;
-		background: radial-gradient(
-			circle at 30% 30%,
-			#1e3a8a 0%,
-			#0f172a 60%,
-			#020617 100%
-		);
 		border-radius: 50%;
-		box-shadow: 
-			inset -20px -20px 50px rgba(0, 0, 0, 0.8),
-			inset 20px 20px 60px rgba(255, 255, 255, 0.1);
+		/* Ensures everything inside stays spherical */
+		mask-image: radial-gradient(circle, black 100%, transparent 100%);
+		-webkit-mask-image: radial-gradient(circle, black 100%, transparent 100%);
+		overflow: hidden;
+		box-shadow: 0 0 100px rgba(56, 189, 248, 0.15);
+	}
+
+	.earth-sphere {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		background: #040815; /* Base deep space blue */
+		border-radius: 50%;
+	}
+
+	.earth-surface {
+		position: absolute;
+		inset: 0;
+		background-image: url('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg');
+		background-size: auto 100%;
+		background-repeat: repeat-x;
+		opacity: 0.9;
+		animation: rotate-earth 120s linear infinite;
+		/* Cinematic land color grading */
+		filter: contrast(1.1) brightness(0.9) saturate(1.2);
+	}
+
+	.earth-clouds {
+		position: absolute;
+		inset: -1%; /* Slightly larger for depth */
+		background-image: url('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_clouds_1024.png');
+		background-size: auto 100%;
+		background-repeat: repeat-x;
+		opacity: 0.6;
+		mix-blend-mode: screen;
+		animation: rotate-clouds 80s linear infinite;
+	}
+
+	.earth-haze {
+		position: absolute;
+		inset: 0;
+		/* Inner blue scattering / Fresnel look */
+		background: radial-gradient(circle at center, transparent 40%, rgba(56, 189, 248, 0.3) 75%, rgba(56, 189, 248, 0.6) 100%);
+		pointer-events: none;
+	}
+
+	.earth-terminator {
+		position: absolute;
+		inset: 0;
+		/* Fixed shadow relative to camera to simulate sun light source from top-left */
+		background: radial-gradient(circle at 30% 30%, transparent 20%, rgba(0, 0, 0, 0.4) 60%, rgba(0, 0, 0, 0.9) 100%);
+		pointer-events: none;
 	}
 
 	.earth-glow {
 		position: absolute;
-		width: 65vh;
-		height: 65vh;
-		background: radial-gradient(circle, rgba(56, 189, 248, 0.2) 0%, transparent 70%);
+		width: 70vh;
+		height: 70vh;
+		background: radial-gradient(circle, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.05) 50%, transparent 75%);
 		border-radius: 50%;
-		filter: blur(20px);
+		filter: blur(40px);
+		z-index: -1;
+	}
+
+	@keyframes rotate-earth {
+		from { background-position: 0 0; }
+		to { background-position: 200% 0; }
+	}
+
+	@keyframes rotate-clouds {
+		from { background-position: 0 0; }
+		to { background-position: -200% 0; }
 	}
 
 	/* ── Layer 0: Cosmic Background -------------------------------------------- */
