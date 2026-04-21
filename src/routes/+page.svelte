@@ -38,6 +38,7 @@
 	
 	let countryOverviewCenter = $state<[number, number] | null>(null);
 	let lastSearchQuery = $state('');
+	let lastCountryCode = $state<string | null>(null);
 	
 	let exploreTimeout: ReturnType<typeof setTimeout> | null = null;
 	let isExplorationCancelled = false;
@@ -68,15 +69,43 @@
 		if (map) map.stop();
 	};
 
-	const fetchCities = async (country: string): Promise<[number, number][]> => {
+	const fetchCities = async (searchQuery: string, countryCode: string | null): Promise<[number, number][]> => {
 		try {
-			const query = encodeURIComponent(country);
-			const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}+city&format=json&limit=15`);
-			const data = await res.json();
-			if (!data || data.length === 0) return [];
+			let data = [];
 			
+			// Strategy 1: Strict country code
+			if (countryCode) {
+				const res = await fetch(`https://nominatim.openstreetmap.org/search?countrycodes=${countryCode}&featuretype=city&format=json&limit=15&addressdetails=1`);
+				data = await res.json();
+			}
+			
+			// Strategy 2: Fallback to text query
+			if (!data || data.length === 0) {
+				const query = encodeURIComponent(`city ${searchQuery}`);
+				const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=15&addressdetails=1`);
+				data = await res.json();
+			}
+			
+			if (!data || data.length === 0) return [];
+
+			// Soft Match Filter
+			let validData = data.filter((d: any) => {
+				const cCode = d.address?.country_code;
+				const cName = d.address?.country?.toLowerCase();
+				const sQuery = searchQuery.toLowerCase();
+				
+				return (
+					(countryCode && cCode === countryCode) ||
+					(cName && cName.includes(sQuery)) ||
+					(sQuery && cName === sQuery) ||
+					(d.display_name?.toLowerCase().includes(sQuery))
+				);
+			});
+
+			if (validData.length === 0) validData = data;
+
 			// Extract coordinates
-			const cities: [number, number][] = data.map((d: any) => [parseFloat(d.lon), parseFloat(d.lat)]);
+			const cities: [number, number][] = validData.map((d: any) => [parseFloat(d.lon), parseFloat(d.lat)]);
 			
 			// Shuffle array
 			for (let i = cities.length - 1; i > 0; i--) {
@@ -84,8 +113,7 @@
 				[cities[i], cities[j]] = [cities[j], cities[i]];
 			}
 			
-			// Return up to 3 cities
-			return cities.slice(0, 3);
+			return cities;
 		} catch (err) {
 			console.error('Failed to fetch cities', err);
 			return [];
@@ -101,11 +129,13 @@
 			speed: 0.8,
 			curve: 1.2,
 			pitch: 25,
+			bearing: 0,
 			essential: true
 		});
 		map.once('moveend', () => {
 			if (appState === 'returning') {
-				appState = 'arrived';
+				appState = 'idle';
+				toggleMapInteractivity(true);
 				isExplorationCancelled = false;
 			}
 		});
@@ -115,9 +145,19 @@
 		if (!map || appState !== 'wandering') return;
 		isExplorationCancelled = false;
 		
-		const cities = await fetchCities(lastSearchQuery);
+		let cities = await fetchCities(lastSearchQuery, lastCountryCode);
 		
-		if (cities.length === 0 || isExplorationCancelled) {
+		// Fallback: Ensure exactly 3 cities to avoid empty states
+		while (cities.length < 3) {
+			const center = countryOverviewCenter || BERLIN;
+			const offsetLat = (Math.random() - 0.5) * 4; // +/- 2 degrees
+			const offsetLng = (Math.random() - 0.5) * 4;
+			cities.push([center[0] + offsetLng, center[1] + offsetLat]);
+		}
+		
+		cities = cities.slice(0, 3);
+
+		if (isExplorationCancelled) {
 			returnToCountry();
 			return;
 		}
@@ -282,14 +322,15 @@
 			isSearching = true;
 			try {
 				const query = encodeURIComponent(searchQuery);
-				const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`);
+				const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&addressdetails=1`);
 				const data = await res.json();
 				if (data && data.length > 0) {
-					const { lat, lon } = data[0];
+					const { lat, lon, address } = data[0];
 					const destination: [number, number] = [parseFloat(lon), parseFloat(lat)];
 					
 					countryOverviewCenter = destination;
 					lastSearchQuery = searchQuery;
+					lastCountryCode = address?.country_code || null;
 
 					appState = 'zooming_out';
 					
