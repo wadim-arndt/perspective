@@ -1,61 +1,69 @@
 # 🌍 Perspective
 
-> "The further you go, the more you see."
+> "Experience the world as a fluid, interconnected space."
 
-**Perspective** is a minimal, immersive web experience that explores the relationship between the observer and the observed. Starting from a precise coordinate in the real world, it invites you to transcend the local and witness the transition from tangible geography to cosmic abstraction.
+**Perspective** is an immersive digital travel tool designed to shift how you navigate the globe. It transforms traditional map exploration into a continuous, cinematic journey—moving you seamlessly from your local surroundings to distant corners of the Earth.
 
 ---
 
 ## ✨ The Concept
 
-In a world defined by details, we often lose sight of the whole. **Perspective** uses the mechanism of the *zoom* as a narrative device—a silent storyteller that shifts the focus from the individual to the universal.
+We often interact with digital maps in fragmented ways: clicking, jumping, loading. **Perspective** connects these disconnected moments into a continuous flow. 
 
-### 📍 Local
-The journey begins at your feet. Real-world coordinates, street-level fidelity, and the pulsing marker of your presence. This is reality.
+You begin anchored in a real-world location. From there, you search for a country, smoothly traverse the globe, and engage in a guided, algorithmic exploration. It is the feeling of *digital traveling*—a curated sequence of scale, movement, and geography.
 
-### 🌐 Global
-As you ascend, the familiar boundaries of the map dissolve. Landmasses become shapes, oceans become textures, and the planet reveals itself as a singular, fragile sphere suspended in the void.
+---
 
-### 🌌 Cosmic
-At the furthest reaches, even the Earth becomes an abstraction—a memory of light against the deep, dark backdrop of the starfield. Here, scale is no longer measured in meters, but in wonder.
+## 🧭 Journey Flow
+
+The experience is structured as a continuous narrative of movement:
+
+*   📍 **Start:** The journey begins exactly where you are, grounding the experience in reality.
+*   🌐 **Travel:** A smooth, sweeping transition lifts you out and carries you across the Earth to your destination.
+*   🗺️ **Arrival:** The camera settles onto a high-fidelity satellite overview of your selected country.
+*   🏙️ **Wandering:** An automated, guided sequence gently flies you through three distinct cities within the country.
+*   🔄 **Return:** The sequence concludes by pulling back, leaving you in a calm, interactive country overview.
 
 ---
 
 ## 🕹️ Core Features
 
-*   📍 **Presence:** Geolocation-based initialization centers the experience exactly where you are.
-*   💨 **Fluid Motion:** Silky-smooth zoom interactions designed for a weightless feel.
-*   🔘 **Minimalist Pulse:** A "You are here" marker that provides a grounding anchor in the local phase.
-*   🌑 **Atmospheric Shading:** An abstraction layer that artistically renders the Earth as it recedes into the distance.
-*   ✨ **Stellar Transition:** A seamless fade into a deep space environment as you leave the planetary orbit.
+*   🌍 **Country Search:** Effortlessly jump to any country across the globe with a minimal search interface.
+*   ✈️ **Cinematic Travel:** Smooth, two-stage flight paths that zoom out to a global scale before descending into a new region.
+*   🏙️ **Wandering Mode:** An algorithmic exploration feature that intelligently fetches and guides you through 3 real cities within your chosen country.
+*   ⏱️ **Timed Exploration:** Each city visit holds for about 15 seconds, complete with subtle, dynamic micro-movements.
+*   ⌨️ **Controls:** 
+    *   `Enter` → Start a journey from the search bar
+    *   `Q` → Instantly exit Wandering Mode and return to the country overview
+*   🧭 **Free Navigation:** After a journey concludes, full manual pan and zoom controls are restored for open exploration.
 
 ---
 
 ## 🎨 Experience Design
 
-*   **Minimalist UI:** The interface is invisible. There are no buttons to click, only the world to explore.
-*   **Atmospheric Transitions:** Every zoom level has been tuned to feel cinematic, with subtle fades and lighting shifts.
-*   **Scale-Driven Emotion:** The design philosophy focuses on the emotional impact of "leaving home"—moving from the busy local map to the quiet isolation of space.
-*   **Deep Immersion:** A dark, moody aesthetic that prioritizes the visual journey over technical utility.
+*   **Digital Traveling:** The focus is on the feeling of motion and the geographical relationship between places, replacing static interactions with fluid movement.
+*   **Satellite Realism:** A crystal-clear, high-fidelity satellite base layer ensures the Earth looks real, sharp, and recognizable at all zoom levels.
+*   **Calm Pacing:** No abrupt cuts or blurry transitions. Easing curves and slow camera speeds create a deliberate, relaxing experience.
+*   **Invisible UI:** The interface remains minimal, surfacing only when necessary to start a new journey or initiate a wander.
 
 ---
 
 ## 🖱️ Interaction
 
-This is an exploration-based experience. There is no guided tour—only discovery.
+This tool is designed to be experienced as both a guided journey and a free-roaming map.
 
-*   **Scroll to Zoom:** Navigate the scales of existence with your mouse wheel or trackpad.
-*   **Drag to Navigate:** Explore the surface of the planet and the reaches of the void.
-*   **Observe:** The experience is reactive to your curiosity.
+1.  **Search:** Enter a country name to begin your journey.
+2.  **Watch:** Sit back and experience the automated flights and Wandering sequences.
+3.  **Explore:** Once a sequence ends (or is cancelled), the map unlocks. Freely pan, scroll, and zoom to manually explore the country at your own pace.
 
 ---
 
 ## 🛠️ Tech Stack
 
 *   **SvelteKit:** The foundation for a fast, modern web experience.
-*   **MapLibre GL JS:** Empowering the high-performance map and abstraction layers.
+*   **MapLibre GL JS:** Empowering the high-performance satellite map and fluid camera flights.
 *   **TypeScript:** Ensuring a robust and scalable architecture.
-*   **Vite:** Powering the rapid development and building workflow.
+*   **Nominatim API:** Open-source geocoding for intelligent city selection and bounding.
 
 ---
 
@@ -92,12 +100,12 @@ Experience the journey locally on your machine.
 
 ## 🔭 Future Vision
 
-The horizon is always moving. Future iterations of **Perspective** aim to include:
+The journey continues. Future iterations of **Perspective** aim to introduce:
 
-*   **High-Fidelity Planetary Shaders:** Bringing more realism to the Earth abstraction with custom WebGL shaders.
-*   **Deep Space Particles:** Transitioning into a full Three.js-powered starfield for a truly three-dimensional cosmos.
-*   **Narrative Layers:** Subtle, poetic context that appears as you reach different atmospheric milestones.
+*   **Smarter City Selection:** Prioritizing cultural capitals and landmarks during the Wandering sequence.
+*   **Rich Data Integration:** Subtly introducing local metadata (timezones, temperatures, or brief cultural facts) upon arrival.
+*   **Storytelling Layers:** Evolving from algorithmic exploration into curated, narrative-driven geographic journeys.
 
 ---
 
-*Designed for the curious. Built for the dreamers.*
+*Designed for the curious. Built for the travelers.*
