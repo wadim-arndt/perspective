@@ -12,6 +12,7 @@
 	let mapContainer: HTMLDivElement;
 	let map = $state<MapLibreMap | null>(null);
 	let currentZoom = $state(13);
+	let homeLocation = $state<[number, number]>(BERLIN);
 
 	// Derived values for smooth transitions
 	// Phase 1: Map (Zoom 13 -> 6)
@@ -25,6 +26,22 @@
 	onMount(async () => {
 		// Dynamic import keeps maplibre-gl out of the SSR bundle entirely
 		const maplibregl = (await import('maplibre-gl')).default;
+
+		/**
+		 * Interaction logic: Fly back to home location on Spacebar
+		 */
+		const handleKeydown = (e: KeyboardEvent) => {
+			if (e.code === 'Space' && map) {
+				e.preventDefault(); // prevent scroll
+				map.flyTo({
+					center: homeLocation,
+					zoom: 13,
+					speed: 0.8,     // slightly slower for "cinematic" feel
+					curve: 1,       // smooth zoom-out-in curve
+					essential: true
+				});
+			}
+		};
 
 		/**
 		 * Initialise the MapLibre map centered on `center`.
@@ -77,7 +94,10 @@
 		// ── Geolocation → Berlin fallback ─────────────────────────────────────
 		if ('geolocation' in navigator) {
 			navigator.geolocation.getCurrentPosition(
-				({ coords }) => initMap([coords.longitude, coords.latitude]),
+				({ coords }) => {
+					homeLocation = [coords.longitude, coords.latitude];
+					initMap(homeLocation);
+				},
 				()          => initMap(BERLIN),
 				{ timeout: 6000, maximumAge: 60_000 }
 			);
@@ -85,8 +105,11 @@
 			initMap(BERLIN);
 		}
 
+		window.addEventListener('keydown', handleKeydown);
+
 		// ── Cleanup on component destroy ──────────────────────────────────────
 		return () => {
+			window.removeEventListener('keydown', handleKeydown);
 			map?.remove();
 			map = null;
 		};
