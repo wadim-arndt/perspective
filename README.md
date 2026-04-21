@@ -1,42 +1,76 @@
-# sv
+# Perspective
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A minimal immersive web experience that starts from a real-world location and zooms out into an abstract Earth and space perspective.
 
-## Creating a project
+## Concept
 
-If you're seeing this, you've probably already done this step. Congrats!
+**Perspective** is a visual journey designed around the transition of scale:
+- **Local:** Starts at your current geolocation (or Berlin).
+- **Global:** Smoothly transitions into an abstract Earth view.
+- **Cosmic:** Scales out into a stylized space perspective.
 
-```sh
-# create a new project
-npx sv create my-app
-```
+The core of the experience is the **zoom as storytelling**—moving from the granular detail of the street level to the vastness of the cosmos.
 
-To recreate this project with the same configuration:
+---
 
-```sh
-# recreate this project
-npx sv@0.15.1 create --template minimal --types ts --install npm .
-```
+## Tech Stack
 
-## Developing
+- **Framework:** [SvelteKit](https://kit.svelte.dev/)
+- **Map Engine:** [MapLibre GL JS](https://maplibre.org/)
+- **Languages:** JavaScript / TypeScript
+- **Bundler:** Vite
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+## Features
 
-```sh
-npm run dev
+- [x] **Geolocation-based start:** Automatically centers the map on your location (with fallback).
+- [x] **Seamless Zoom:** Optimized transition between map zoom levels.
+- [x] **"You are here" Marker:** A minimalist pulsing indicator for the starting point.
+- [x] **Earth Abstraction:** Visual layers that transition the map into a cosmic sphere at low zooms.
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
+---
 
-## Building
+## Setup & Installation
 
-To create a production version of your app:
+### Prerequisites
+- **Node.js:** version 18.0 or higher
+- **npm:** (included with Node.js)
 
-```sh
-npm run build
-```
+### Installation Steps
 
-You can preview the production build with `npm run preview`.
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/wadim-arndt/perspective.git
+   cd perspective
+   ```
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Start the development server:**
+   ```bash
+   npm run dev
+   ```
+
+4. **Launch the app:**
+   Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+---
+
+## Usage
+
+- **Zoom:** Use your mouse wheel or trackpad to scale the perspective.
+- **Navigate:** Click and drag to explore the map.
+- **Cosmic View:** Zoom all the way out to experience the abstract Earth and space layers.
+- *Note: Additional keyboard controls (like Spacebar to reset) are planned for future updates.*
+
+## Future Ideas
+
+- [ ] **Enhanced Earth Visualization:** Higher fidelity textures and atmospheric shaders.
+- [ ] **Space Scene:** Integrating Three.js or particle systems for a more dynamic starfield.
+- [ ] **Narrative Zoom Stages:** Contextual information appearing at different atmospheric levels.
+
+---
+
+*Built with focus on minimal aesthetics and immersive interaction.*
