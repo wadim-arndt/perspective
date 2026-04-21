@@ -9,10 +9,17 @@
 	// No token required.
 	const DARK_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
+	type AppState = 'idle' | 'traveling' | 'exploring';
+
 	let mapContainer: HTMLDivElement;
 	let map = $state<MapLibreMap | null>(null);
 	let currentZoom = $state(13);
-	let homeLocation = $state<[number, number]>(BERLIN);
+	let homeLocation = $state(BERLIN as [number, number]);
+	let appState = $state<AppState>('idle');
+	let searchQuery = $state('');
+	let isSearching = $state(false);
+	
+	let exploreAnimationFrame: number | null = null;
 
 	// Derived values for smooth transitions
 	// Phase 1: Map (Zoom 13 -> 6)
@@ -23,6 +30,51 @@
 	const cosmicProgress = $derived(Math.max(0, Math.min(1, (3 - currentZoom) / 3)));     // 0 at z3, 1 at z0
 	const earthScale = $derived(0.8 + (1 - transitionProgress) * 0.4); // slightly bigger as we zoom in
 
+	const toggleMapInteractivity = (enabled: boolean) => {
+		if (!map) return;
+		if (enabled) {
+			map.dragPan.enable();
+			map.scrollZoom.enable();
+			map.doubleClickZoom.enable();
+			map.touchZoomRotate.enable();
+			map.keyboard.enable();
+		} else {
+			map.dragPan.disable();
+			map.scrollZoom.disable();
+			map.doubleClickZoom.disable();
+			map.touchZoomRotate.disable();
+			map.keyboard.disable();
+		}
+	};
+
+	const stopExploration = () => {
+		if (exploreAnimationFrame) {
+			cancelAnimationFrame(exploreAnimationFrame);
+			exploreAnimationFrame = null;
+		}
+	};
+
+	const startExploration = () => {
+		if (!map) return;
+		let startTime = performance.now();
+		const explore = (time: number) => {
+			if (appState !== 'exploring' || !map) return;
+			const dt = time - startTime;
+			startTime = time;
+			
+			// Gently rotate bearing and slightly adjust pitch
+			const bearing = map.getBearing() + (dt * 0.001);
+			const pitch = 50 + Math.sin(time * 0.0001) * 5;
+			
+			map.jumpTo({ bearing, pitch });
+			
+			if (appState === 'exploring') {
+				exploreAnimationFrame = requestAnimationFrame(explore);
+			}
+		};
+		exploreAnimationFrame = requestAnimationFrame(explore);
+	};
+
 	onMount(async () => {
 		// Dynamic import keeps maplibre-gl out of the SSR bundle entirely
 		const maplibregl = (await import('maplibre-gl')).default;
@@ -31,8 +83,16 @@
 		 * Interaction logic: Fly back to home location on Spacebar
 		 */
 		const handleKeydown = (e: KeyboardEvent) => {
-			if (e.code === 'Space' && map) {
+			// Don't trigger if user is typing in the search input
+			if (e.target instanceof HTMLInputElement) return;
+
+			if (e.code === 'Space' && map && appState !== 'traveling') {
 				e.preventDefault(); // prevent scroll
+				
+				if (appState === 'exploring') stopExploration();
+				appState = 'traveling';
+				toggleMapInteractivity(false);
+
 				map.flyTo({
 					center: homeLocation,
 					zoom: 13,
@@ -40,9 +100,15 @@
 					curve: 1,       // smooth zoom-out-in curve
 					essential: true
 				});
+				
+				map.once('moveend', () => {
+					if (appState === 'traveling') {
+						appState = 'idle';
+						toggleMapInteractivity(true);
+					}
+				});
 			}
 		};
-
 		/**
 		 * Initialise the MapLibre map centered on `center`.
 		 * Kept as a self-contained function so the geolocation branch
@@ -110,10 +176,58 @@
 		// ── Cleanup on component destroy ──────────────────────────────────────
 		return () => {
 			window.removeEventListener('keydown', handleKeydown);
+			stopExploration();
 			map?.remove();
 			map = null;
 		};
 	});
+
+	const handleSearch = async (e: KeyboardEvent) => {
+		if (e.key === 'Enter' && searchQuery.trim().length > 0 && map && appState === 'idle') {
+			isSearching = true;
+			try {
+				const query = encodeURIComponent(searchQuery);
+				const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`);
+				const data = await res.json();
+				if (data && data.length > 0) {
+					const { lat, lon } = data[0];
+					const destination: [number, number] = [parseFloat(lon), parseFloat(lat)];
+					
+					appState = 'traveling';
+					
+					// Disable interactivity directly here since map is available
+					map.dragPan.disable();
+					map.scrollZoom.disable();
+					map.doubleClickZoom.disable();
+					map.touchZoomRotate.disable();
+					map.keyboard.disable();
+
+					map.flyTo({
+						center: destination,
+						zoom: 5.5, // A good overview zoom for an average country
+						speed: 0.15, // VERY slow
+						curve: 1.8, // swooping high up into the cosmic space layer
+						pitch: 45,
+						essential: true
+					});
+					
+					map.once('moveend', () => {
+						if (appState === 'traveling') {
+							appState = 'exploring';
+							startExploration();
+						}
+					});
+				} else {
+					console.warn('Destination not found');
+				}
+			} catch (err) {
+				console.error('Search failed', err);
+			} finally {
+				isSearching = false;
+				searchQuery = ''; // clear input
+			}
+		}
+	};
 </script>
 
 <svelte:head>
@@ -128,6 +242,32 @@
 
 <!-- Cosmic Workspace -->
 <div class="perspective-container">
+
+	<!-- Top Overlay with UI -->
+	<div class="ui-layer">
+		<div class="search-container" class:active={searchQuery.length > 0 || isSearching}>
+			<svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<circle cx="11" cy="11" r="8"></circle>
+				<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+			</svg>
+			<input 
+				type="text" 
+				bind:value={searchQuery} 
+				onkeydown={handleSearch} 
+				placeholder="Where to...?"
+				disabled={appState !== 'idle' || isSearching}
+			/>
+			{#if isSearching}
+				<div class="search-spinner"></div>
+			{/if}
+			{#if appState !== 'idle'}
+				<div class="state-indicator">
+					{appState === 'traveling' ? 'Traveling...' : 'Wandering...'}
+				</div>
+			{/if}
+		</div>
+	</div>
+
 	<!-- Layer 0: Deep Space -->
 	<div class="layer cosmic-background">
 		<div class="stars"></div>
@@ -185,6 +325,100 @@
 		width: 100vw;
 		height: 100vh;
 		background: #020205;
+	}
+
+	/* ── UI Layer ------------------------------------------------------------- */
+	.ui-layer {
+		position: absolute;
+		top: 60px;
+		left: 0;
+		right: 0;
+		display: flex;
+		justify-content: center;
+		z-index: 50;
+		pointer-events: none;
+	}
+	
+	.search-container {
+		display: flex;
+		align-items: center;
+		background: rgba(10, 12, 20, 0.4);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		padding: 0 16px;
+		border-radius: 30px;
+		height: 52px;
+		width: 260px;
+		transition: all 0.5s cubic-bezier(0.2, 0, 0, 1);
+		pointer-events: auto;
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+	}
+	
+	.search-container:focus-within, .search-container.active {
+		background: rgba(15, 18, 30, 0.6);
+		border-color: rgba(255, 255, 255, 0.2);
+		width: 320px;
+		box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
+	}
+
+	.search-icon {
+		width: 18px;
+		height: 18px;
+		color: rgba(255, 255, 255, 0.7);
+		margin-right: 12px;
+		transition: color 0.3s;
+	}
+	.search-container.active .search-icon {
+		color: #fff;
+	}
+
+	.search-container input {
+		background: transparent;
+		border: none;
+		color: #fff;
+		font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+		font-size: 15px;
+		letter-spacing: 0.02em;
+		flex: 1;
+		outline: none;
+		width: 100%;
+	}
+
+	.search-container input::placeholder {
+		color: rgba(255, 255, 255, 0.5);
+		transition: opacity 0.3s;
+	}
+	.search-container:focus-within input::placeholder {
+		opacity: 0.5;
+	}
+	
+	.search-spinner {
+		width: 16px;
+		height: 16px;
+		border: 2px solid rgba(255, 255, 255, 0.1);
+		border-top-color: rgba(255, 255, 255, 0.8);
+		border-radius: 50%;
+		animation: spin 1s linear infinite;
+		margin-left: 12px;
+	}
+
+	.state-indicator {
+		font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+		font-size: 11px;
+		color: rgba(255, 255, 255, 0.8);
+		letter-spacing: 0.15em;
+		text-transform: uppercase;
+		margin-left: 12px;
+		animation: pulse-text 3s ease-in-out infinite;
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+	@keyframes pulse-text {
+		0%, 100% { opacity: 0.5; }
+		50% { opacity: 1; }
 	}
 	
 	.layer {
