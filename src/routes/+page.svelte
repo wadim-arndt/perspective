@@ -26,7 +26,7 @@
 		]
 	};
 
-	type AppState = 'idle' | 'zooming_out' | 'zooming_in' | 'arrived' | 'wandering';
+	type AppState = 'idle' | 'zooming_out' | 'zooming_in' | 'arrived' | 'wandering' | 'returning';
 
 	let mapContainer: HTMLDivElement;
 	let map = $state<MapLibreMap | null>(null);
@@ -36,7 +36,11 @@
 	let searchQuery = $state('');
 	let isSearching = $state(false);
 	
+	let countryOverviewCenter = $state<[number, number] | null>(null);
+	let lastSearchQuery = $state('');
+	
 	let exploreTimeout: ReturnType<typeof setTimeout> | null = null;
+	let isExplorationCancelled = false;
 
 	const toggleMapInteractivity = (enabled: boolean) => {
 		if (!map) return;
@@ -56,6 +60,7 @@
 	};
 
 	const stopExploration = () => {
+		isExplorationCancelled = true;
 		if (exploreTimeout) {
 			clearTimeout(exploreTimeout);
 			exploreTimeout = null;
@@ -63,28 +68,100 @@
 		if (map) map.stop();
 	};
 
-	const startExploration = () => {
-		if (!map || appState !== 'wandering') return;
-		
-		const center = map.getCenter();
-		// pick a random offset roughly within the region
-		const offsetLat = (Math.random() - 0.5) * 0.5;
-		const offsetLng = (Math.random() - 0.5) * 0.5;
-		
+	const fetchCities = async (country: string): Promise<[number, number][]> => {
+		try {
+			const query = encodeURIComponent(country);
+			const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}+city&format=json&limit=15`);
+			const data = await res.json();
+			if (!data || data.length === 0) return [];
+			
+			// Extract coordinates
+			const cities: [number, number][] = data.map((d: any) => [parseFloat(d.lon), parseFloat(d.lat)]);
+			
+			// Shuffle array
+			for (let i = cities.length - 1; i > 0; i--) {
+				const j = Math.floor(Math.random() * (i + 1));
+				[cities[i], cities[j]] = [cities[j], cities[i]];
+			}
+			
+			// Return up to 3 cities
+			return cities.slice(0, 3);
+		} catch (err) {
+			console.error('Failed to fetch cities', err);
+			return [];
+		}
+	};
+
+	const returnToCountry = () => {
+		if (!map || !countryOverviewCenter) return;
+		appState = 'returning';
 		map.flyTo({
-			center: [center.lng + offsetLng, center.lat + offsetLat],
-			zoom: 7 + Math.random() * 2,
-			speed: 0.1, // very slow
-			curve: 1,
-			pitch: 30 + Math.random() * 20,
+			center: countryOverviewCenter,
+			zoom: 5.5,
+			speed: 0.8,
+			curve: 1.2,
+			pitch: 25,
 			essential: true
 		});
-		
 		map.once('moveend', () => {
-			if (appState === 'wandering') {
-				exploreTimeout = setTimeout(startExploration, 2000);
+			if (appState === 'returning') {
+				appState = 'arrived';
+				isExplorationCancelled = false;
 			}
 		});
+	};
+
+	const startExploration = async () => {
+		if (!map || appState !== 'wandering') return;
+		isExplorationCancelled = false;
+		
+		const cities = await fetchCities(lastSearchQuery);
+		
+		if (cities.length === 0 || isExplorationCancelled) {
+			returnToCountry();
+			return;
+		}
+
+		const visitCity = (index: number) => {
+			if (isExplorationCancelled || index >= cities.length) {
+				returnToCountry();
+				return;
+			}
+
+			const cityCenter = cities[index];
+			
+			// 1. Smooth fly to city
+			map!.flyTo({
+				center: cityCenter,
+				zoom: 11 + Math.random() * 2, // between 11 and 13
+				speed: 0.3,
+				curve: 1.2,
+				pitch: 45 + Math.random() * 15, // between 45 and 60
+				essential: true
+			});
+
+			map!.once('moveend', () => {
+				if (isExplorationCancelled) return;
+				
+				// 2. Subtle micro-movement (easeTo)
+				map!.easeTo({
+					bearing: map!.getBearing() + (Math.random() > 0.5 ? 15 : -15),
+					pitch: map!.getPitch() + (Math.random() > 0.5 ? 5 : -5),
+					zoom: map!.getZoom() + 0.5,
+					duration: 15000,
+					easing: (t) => t // linear drift
+				});
+
+				// 3. Wait up to 15 seconds, then go to next city
+				exploreTimeout = setTimeout(() => {
+					if (isExplorationCancelled) return;
+					map!.stop(); // Stop the easeTo
+					visitCity(index + 1);
+				}, 15000);
+			});
+		};
+
+		visitCity(0);
 	};
 
 	onMount(async () => {
@@ -100,7 +177,7 @@
 
 			if (e.code === 'KeyQ' && appState === 'wandering' && map) {
 				stopExploration();
-				appState = 'arrived';
+				returnToCountry();
 				return;
 			}
 
@@ -211,6 +288,9 @@
 					const { lat, lon } = data[0];
 					const destination: [number, number] = [parseFloat(lon), parseFloat(lat)];
 					
+					countryOverviewCenter = destination;
+					lastSearchQuery = searchQuery;
+
 					appState = 'zooming_out';
 					
 					// Disable interactivity directly here since map is available
@@ -296,7 +376,8 @@
 			{/if}
 			{#if appState !== 'idle' && appState !== 'arrived'}
 				<div class="state-indicator">
-					{appState === 'zooming_out' || appState === 'zooming_in' ? 'Traveling...' : 'Wandering...'}
+					{appState === 'zooming_out' || appState === 'zooming_in' ? 'Traveling...' : 
+					 appState === 'returning' ? 'Returning...' : 'Wandering...'}
 				</div>
 			{/if}
 			{#if appState === 'arrived'}
