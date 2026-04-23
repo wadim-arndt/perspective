@@ -493,7 +493,7 @@
 			// We keep a tiny, low-opacity attribution instead of removing it.
 			map.addControl(
 				new maplibregl.AttributionControl({ compact: true }),
-				'bottom-right'
+				'bottom-left'
 			);
 		};
 
@@ -663,12 +663,24 @@
 				</div>
 			{/if}
 			{#if appState === 'arrived'}
-				<button class="wander-btn" onclick={() => {
-					appState = 'wandering';
-					startExploration();
-				}}>
-					{visitedCities.size > 0 ? 'Explore Further' : 'Wander'}
-				</button>
+				<div class="action-group">
+					<button class="wander-btn" onclick={() => {
+						appState = 'wandering';
+						startExploration();
+					}}>
+						{visitedCities.size > 0 ? '▶ Continue exploring' : 'Wander'}
+					</button>
+					{#if visitedCities.size > 0}
+						<button class="wander-btn end-btn" onclick={() => {
+							appState = 'idle';
+							visitedCities.clear();
+							currentLocationContext = null;
+							toggleMapInteractivity(true);
+						}}>
+							❌ End
+						</button>
+					{/if}
+				</div>
 			{/if}
 		</div>
 	</div>
@@ -752,7 +764,7 @@
 		right: 0;
 		display: flex;
 		justify-content: center;
-		z-index: 50;
+		z-index: 1000; /* High priority to stay above map controls */
 		pointer-events: none;
 	}
 	
@@ -766,7 +778,9 @@
 		padding: 0 16px;
 		border-radius: 30px;
 		height: 52px;
-		width: 260px;
+		width: fit-content; /* Allow container to grow with content */
+		min-width: 260px;
+		max-width: 90vw;
 		transition: all 0.5s cubic-bezier(0.2, 0, 0, 1);
 		pointer-events: auto;
 		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
@@ -775,7 +789,7 @@
 	.search-container:focus-within, .search-container.active {
 		background: rgba(15, 18, 30, 0.6);
 		border-color: rgba(255, 255, 255, 0.2);
-		width: 320px;
+		min-width: 320px;
 		box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
 	}
 
@@ -846,6 +860,13 @@
 		pointer-events: none; /* Default layer behavior */
 	}
 
+	.action-group {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-left: 12px;
+	}
+
 	.wander-btn {
 		background: rgba(255, 255, 255, 0.1);
 		border: 1px solid rgba(255, 255, 255, 0.2);
@@ -856,11 +877,24 @@
 		padding: 6px 14px;
 		border-radius: 20px;
 		cursor: pointer;
-		margin-left: 12px;
+		white-space: nowrap;
 		transition: all 0.2s;
 	}
 	.wander-btn:hover {
 		background: rgba(255, 255, 255, 0.2);
+		transform: translateY(-1px);
+	}
+	.end-btn {
+		background: rgba(255, 100, 100, 0.15);
+		border-color: rgba(255, 100, 100, 0.3);
+	}
+	.end-btn:hover {
+		background: rgba(255, 100, 100, 0.25);
+	}
+
+	/* MapLibre internal control priority */
+	:global(.maplibregl-control-container) {
+		z-index: 1 !important;
 	}
 
 	/* ── Layer 2: Map --------------------------------------------------------- */
