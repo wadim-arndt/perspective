@@ -34,7 +34,19 @@
 		city: string;
 		state: string;
 		country: string;
+		distanceFromHome?: number;
 	}
+
+	const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+		const R = 6371; // Earth's radius in km
+		const dLat = (lat2 - lat1) * Math.PI / 180;
+		const dLon = (lon2 - lon1) * Math.PI / 180;
+		const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+			Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+			Math.sin(dLon/2) * Math.sin(dLon/2);
+		const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+		return Math.round(R * c);
+	};
 
 	type AppState = 'idle' | 'zooming_out' | 'zooming_in' | 'arrived' | 'wandering' | 'returning';
 
@@ -111,8 +123,8 @@
 			if (isWater) return null;
 
 			return {
-				lng,
-				lat,
+				lng: data.lon ? parseFloat(data.lon) : lng,
+				lat: data.lat ? parseFloat(data.lat) : lat,
 				city: data.address?.city || data.address?.town || data.address?.village || data.address?.municipality || data.name || 'Unknown Location',
 				state: data.address?.state || data.address?.region || data.address?.county || '',
 				country: data.address?.country || ''
@@ -250,6 +262,7 @@
 			}
 
 			const context = cities[index];
+			context.distanceFromHome = calculateDistance(homeLocation[1], homeLocation[0], context.lat, context.lng);
 			currentLocationContext = context;
 			
 			// 1. Smooth fly to city
@@ -559,6 +572,9 @@
 			<div class="context-region">
 				{#if currentLocationContext.state}{currentLocationContext.state}, {/if}
 				{currentLocationContext.country}
+				{#if currentLocationContext.distanceFromHome !== undefined}
+					<span class="context-distance">— {currentLocationContext.distanceFromHome} km away</span>
+				{/if}
 			</div>
 		</div>
 	{/if}
@@ -652,6 +668,13 @@
 		color: rgba(255, 255, 255, 0.75);
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.context-distance {
+		color: rgba(255, 255, 255, 0.5);
+		font-variant-numeric: tabular-nums;
 	}
 
 	@keyframes fade-in {
