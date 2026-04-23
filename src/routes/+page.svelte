@@ -68,6 +68,7 @@
 	let countryOverviewCenter = $state<[number, number] | null>(null);
 	let lastSearchQuery = $state('');
 	let lastCountryCode = $state<string | null>(null);
+	let visitedCities = $state<Set<string>>(new Set());
 	
 	let exploreTimeout: ReturnType<typeof setTimeout> | null = null;
 	let isExplorationCancelled = false;
@@ -186,7 +187,7 @@
 				city: d.address?.city || d.address?.town || d.address?.village || d.address?.municipality || d.name || 'Unknown Location',
 				state: d.address?.state || d.address?.region || d.address?.county || '',
 				country: d.address?.country || ''
-			}));
+			})).filter(c => !visitedCities.has(c.city));
 			
 			// Shuffle array
 			for (let i = cities.length - 1; i > 0; i--) {
@@ -215,7 +216,7 @@
 		});
 		map.once('moveend', () => {
 			if (appState === 'returning') {
-				appState = 'idle';
+				appState = 'arrived';
 				toggleMapInteractivity(true);
 				isExplorationCancelled = false;
 			}
@@ -242,7 +243,10 @@
 				
 				if (isExplorationCancelled) return;
 				
-				validContext = await isValidLand(center[0] + offsetLng, center[1] + offsetLat);
+				const tempContext = await isValidLand(center[0] + offsetLng, center[1] + offsetLat);
+				if (tempContext && !visitedCities.has(tempContext.city)) {
+					validContext = tempContext;
+				}
 				attempts++;
 				
 				// Small delay to prevent API spam on failed checks
@@ -274,6 +278,7 @@
 			const context = cities[index];
 			context.distanceFromHome = calculateDistance(homeLocation[1], homeLocation[0], context.lat, context.lng);
 			currentLocationContext = context;
+			visitedCities.add(context.city);
 			
 			// 1. Smooth fly to city
 			map!.flyTo({
@@ -533,6 +538,7 @@
 				currentLocationContext = null;
 			}
 			isSearching = true;
+			visitedCities.clear();
 			
 			// If in cosmic mode, return to map first
 			if (isInCosmicMode) {
@@ -660,7 +666,9 @@
 				<button class="wander-btn" onclick={() => {
 					appState = 'wandering';
 					startExploration();
-				}}>Wander</button>
+				}}>
+					{visitedCities.size > 0 ? 'Explore Further' : 'Wander'}
+				</button>
 			{/if}
 		</div>
 	</div>
