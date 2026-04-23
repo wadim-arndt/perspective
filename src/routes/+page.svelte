@@ -191,7 +191,7 @@
 			// 1. Smooth fly to city
 			map!.flyTo({
 				center: cityCenter,
-				zoom: 11 + Math.random() * 2, // between 11 and 13
+				zoom: 14.5 + Math.random() * 1.5, // between 14.5 and 16 (neighborhood/city level)
 				speed: 0.3,
 				curve: 1.2,
 				pitch: 45 + Math.random() * 15, // between 45 and 60
@@ -423,11 +423,11 @@
 					map.touchZoomRotate.disable();
 					map.keyboard.disable();
 
-					// Stage 1: Zoom out to global view
+					// Stage 1: Zoom out to space view (Earth visible)
 					map.flyTo({
-						zoom: 2,
-						speed: 0.5,
-						curve: 1,
+						zoom: 0, // Triggers space view (virtualZoom < 1.5 fading)
+						speed: 0.4, // Slightly slower for epic cinematic feel
+						curve: 1.2, // Smoother curve
 						pitch: 0,
 						essential: true
 					});
