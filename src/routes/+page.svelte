@@ -28,6 +28,14 @@
 		]
 	};
 
+	interface LocationContext {
+		lng: number;
+		lat: number;
+		city: string;
+		state: string;
+		country: string;
+	}
+
 	type AppState = 'idle' | 'zooming_out' | 'zooming_in' | 'arrived' | 'wandering' | 'returning';
 
 	let mapContainer: HTMLDivElement;
@@ -38,6 +46,7 @@
 	let searchQuery = $state('');
 	let isSearching = $state(false);
 	
+	let currentLocationContext = $state<LocationContext | null>(null);
 	let countryOverviewCenter = $state<[number, number] | null>(null);
 	let lastSearchQuery = $state('');
 	let lastCountryCode = $state<string | null>(null);
@@ -87,7 +96,33 @@
 		if (map) map.stop();
 	};
 
-	const fetchCities = async (searchQuery: string, countryCode: string | null): Promise<[number, number][]> => {
+	const isValidLand = async (lng: number, lat: number): Promise<LocationContext | null> => {
+		try {
+			// zoom=10 corresponds roughly to city level; it ensures we hit a recognized landmass feature
+			const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=10`);
+			if (!res.ok) return null;
+			const data = await res.json();
+			
+			// Nominatim typically returns an error for open ocean/unmapped regions
+			if (data && data.error === 'Unable to geocode') return null;
+			
+			// Explicitly filter out identified water bodies
+			const isWater = data.type === 'sea' || data.type === 'ocean' || data.type === 'water';
+			if (isWater) return null;
+
+			return {
+				lng,
+				lat,
+				city: data.address?.city || data.address?.town || data.address?.village || data.address?.municipality || data.name || 'Unknown Location',
+				state: data.address?.state || data.address?.region || data.address?.county || '',
+				country: data.address?.country || ''
+			};
+		} catch {
+			return null;
+		}
+	};
+
+	const fetchCities = async (searchQuery: string, countryCode: string | null): Promise<LocationContext[]> => {
 		try {
 			let data = [];
 			
@@ -122,8 +157,14 @@
 
 			if (validData.length === 0) validData = data;
 
-			// Extract coordinates
-			const cities: [number, number][] = validData.map((d: any) => [parseFloat(d.lon), parseFloat(d.lat)]);
+			// Extract structured context
+			const cities: LocationContext[] = validData.map((d: any) => ({
+				lng: parseFloat(d.lon),
+				lat: parseFloat(d.lat),
+				city: d.address?.city || d.address?.town || d.address?.village || d.address?.municipality || d.name || 'Unknown Location',
+				state: d.address?.state || d.address?.region || d.address?.county || '',
+				country: d.address?.country || ''
+			}));
 			
 			// Shuffle array
 			for (let i = cities.length - 1; i > 0; i--) {
@@ -165,12 +206,33 @@
 		
 		let cities = await fetchCities(lastSearchQuery, lastCountryCode);
 		
-		// Fallback: Ensure exactly 3 cities to avoid empty states
+		// Fallback: Ensure exactly 3 destinations to avoid empty states
+		// By prioritizing fetchCities, we ensure at least 2 real cities if the search resolves correctly.
 		while (cities.length < 3) {
 			const center = countryOverviewCenter || BERLIN;
-			const offsetLat = (Math.random() - 0.5) * 4; // +/- 2 degrees
-			const offsetLng = (Math.random() - 0.5) * 4;
-			cities.push([center[0] + offsetLng, center[1] + offsetLat]);
+			let validContext: LocationContext | null = null;
+			let attempts = 0;
+			
+			// Validate random fallback points to ensure they land on valid terrain
+			while (!validContext && attempts < 5) {
+				const offsetLat = (Math.random() - 0.5) * 3; // +/- 1.5 degrees
+				const offsetLng = (Math.random() - 0.5) * 3;
+				
+				if (isExplorationCancelled) return;
+				
+				validContext = await isValidLand(center[0] + offsetLng, center[1] + offsetLat);
+				attempts++;
+				
+				// Small delay to prevent API spam on failed checks
+				if (!validContext) await new Promise(resolve => setTimeout(resolve, 300));
+			}
+			if (validContext) {
+				cities.push(validContext);
+			} else {
+				// Safety fallback if validation repeatedly fails
+				if (cities.length > 0) cities.push({ ...cities[0] });
+				else cities.push({ lng: center[0], lat: center[1], city: 'Unknown Location', state: '', country: lastCountryCode || '' });
+			}
 		}
 		
 		cities = cities.slice(0, 3);
@@ -182,19 +244,21 @@
 
 		const visitCity = (index: number) => {
 			if (isExplorationCancelled || index >= cities.length) {
+				currentLocationContext = null;
 				returnToCountry();
 				return;
 			}
 
-			const cityCenter = cities[index];
+			const context = cities[index];
+			currentLocationContext = context;
 			
 			// 1. Smooth fly to city
 			map!.flyTo({
-				center: cityCenter,
-				zoom: 14.5 + Math.random() * 1.5, // between 14.5 and 16 (neighborhood/city level)
+				center: [context.lng, context.lat],
+				zoom: 16.5 + Math.random() * 1.5, // between 16.5 and 18 (street/building level for maximum immersion)
 				speed: 0.3,
 				curve: 1.2,
-				pitch: 45 + Math.random() * 15, // between 45 and 60
+				pitch: 55 + Math.random() * 15, // steeper pitch (55-70) for dramatic arrival feel
 				essential: true
 			});
 
@@ -284,7 +348,10 @@
 					virtualZoom = 13;
 				}
 				
-				if (appState === 'wandering') stopExploration();
+				if (appState === 'wandering') {
+					stopExploration();
+					currentLocationContext = null;
+				}
 				appState = 'zooming_out';
 				toggleMapInteractivity(false);
 
@@ -393,7 +460,11 @@
 	});
 
 	const handleSearch = async (e: KeyboardEvent) => {
-		if (e.key === 'Enter' && searchQuery.trim().length > 0 && map && appState === 'idle') {
+		if (e.key === 'Enter' && searchQuery.trim().length > 0 && map && (appState === 'idle' || appState === 'arrived' || appState === 'wandering')) {
+			if (appState === 'wandering') {
+				stopExploration();
+				currentLocationContext = null;
+			}
 			isSearching = true;
 			
 			// If in cosmic mode, return to map first
@@ -449,7 +520,8 @@
 							map.once('moveend', () => {
 								if (appState === 'zooming_in') {
 									appState = 'arrived';
-									// Wait for user to trigger wandering
+									toggleMapInteractivity(true);
+									// User can now freely navigate or start wandering
 								}
 							});
 						}
@@ -480,6 +552,17 @@
 <!-- Cosmic Workspace -->
 <div class="perspective-container">
 
+	<!-- Location Context Overlay -->
+	{#if appState === 'wandering' && currentLocationContext}
+		<div class="location-context">
+			<div class="context-city">{currentLocationContext.city}</div>
+			<div class="context-region">
+				{#if currentLocationContext.state}{currentLocationContext.state}, {/if}
+				{currentLocationContext.country}
+			</div>
+		</div>
+	{/if}
+
 	<!-- Top Overlay with UI -->
 	<div class="ui-layer">
 		<div class="search-container" class:active={searchQuery.length > 0 || isSearching}>
@@ -492,7 +575,7 @@
 				bind:value={searchQuery} 
 				onkeydown={handleSearch} 
 				placeholder="Where to...?"
-				disabled={appState !== 'idle' || isSearching}
+				disabled={!(appState === 'idle' || appState === 'arrived' || appState === 'wandering') || isSearching}
 			/>
 			{#if isSearching}
 				<div class="search-spinner"></div>
@@ -542,6 +625,38 @@
 		width: 100vw;
 		height: 100vh;
 		background: #020205;
+	}
+
+	/* ── Location Context ----------------------------------------------------- */
+	.location-context {
+		position: absolute;
+		bottom: 80px;
+		left: 60px;
+		z-index: 40;
+		color: #fff;
+		font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+		pointer-events: none;
+		text-shadow: 0 4px 16px rgba(0, 0, 0, 0.8), 0 1px 4px rgba(0, 0, 0, 0.5);
+		animation: fade-in 1s ease-out;
+	}
+	.context-city {
+		font-size: 42px;
+		font-weight: 300;
+		letter-spacing: 0.02em;
+		margin-bottom: 8px;
+		line-height: 1.1;
+	}
+	.context-region {
+		font-size: 15px;
+		font-weight: 500;
+		color: rgba(255, 255, 255, 0.75);
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+	}
+
+	@keyframes fade-in {
+		from { opacity: 0; transform: translateY(10px); }
+		to { opacity: 1; transform: translateY(0); }
 	}
 
 	/* ── UI Layer ------------------------------------------------------------- */
