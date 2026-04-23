@@ -769,8 +769,9 @@
 	}
 	
 	.search-container {
-		display: flex;
+		display: inline-flex; /* Shrink-to-fit content */
 		align-items: center;
+		gap: 12px; /* Unified spacing between elements */
 		background: rgba(10, 12, 20, 0.4);
 		backdrop-filter: blur(12px);
 		-webkit-backdrop-filter: blur(12px);
@@ -778,10 +779,8 @@
 		padding: 0 16px;
 		border-radius: 30px;
 		height: 52px;
-		width: fit-content; /* Allow container to grow with content */
-		min-width: 260px;
 		max-width: 90vw;
-		transition: all 0.5s cubic-bezier(0.2, 0, 0, 1);
+		transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 		pointer-events: auto;
 		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 	}
@@ -789,15 +788,14 @@
 	.search-container:focus-within, .search-container.active {
 		background: rgba(15, 18, 30, 0.6);
 		border-color: rgba(255, 255, 255, 0.2);
-		min-width: 320px;
 		box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
 	}
 
 	.search-icon {
 		width: 18px;
 		height: 18px;
+		flex-shrink: 0;
 		color: rgba(255, 255, 255, 0.7);
-		margin-right: 12px;
 		transition: color 0.3s;
 	}
 	.search-container.active .search-icon {
@@ -811,9 +809,13 @@
 		font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
 		font-size: 15px;
 		letter-spacing: 0.02em;
-		flex: 1;
 		outline: none;
-		width: 100%;
+		width: 100px; /* Minimal base width */
+		transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.search-container:focus-within input, .search-container.active input {
+		width: 220px; /* Grow with intent */
 	}
 
 	.search-container input::placeholder {
@@ -831,7 +833,7 @@
 		border-top-color: rgba(255, 255, 255, 0.8);
 		border-radius: 50%;
 		animation: spin 1s linear infinite;
-		margin-left: 12px;
+		flex-shrink: 0;
 	}
 
 	.state-indicator {
@@ -840,7 +842,7 @@
 		color: rgba(255, 255, 255, 0.8);
 		letter-spacing: 0.15em;
 		text-transform: uppercase;
-		margin-left: 12px;
+		white-space: nowrap;
 		animation: pulse-text 3s ease-in-out infinite;
 	}
 
@@ -864,7 +866,6 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		margin-left: 12px;
 	}
 
 	.wander-btn {
