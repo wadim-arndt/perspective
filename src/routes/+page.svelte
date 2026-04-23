@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Map as MapLibreMap } from 'maplibre-gl';
+	import Starfield from '$lib/components/Starfield.svelte';
+	import GlobeScene from '$lib/components/GlobeScene.svelte';
 
 	// ─── Fallback coordinates (Berlin) ────────────────────────────────────────
 	const BERLIN: [number, number] = [13.405, 52.52];
@@ -42,6 +44,20 @@
 	
 	let exploreTimeout: ReturnType<typeof setTimeout> | null = null;
 	let isExplorationCancelled = false;
+
+	// ─── Cosmic Zoom State ────────────────────────────────────────────────────
+	let virtualZoom = $state(13); // Extends below 0 for solar system
+	let isInCosmicMode = $state(false); // True when MapLibre is at min zoom and we take over
+
+	// ─── Derived visual states ────────────────────────────────────────────────
+	// Map opacity: full at zoom >= 2.5, fades to 0 at zoom 1
+	let mapOpacity = $derived(Math.max(0, Math.min(1, (virtualZoom - 1) / 1.5)));
+	// Starfield visible when map starts fading
+	let starfieldVisible = $derived(virtualZoom < 2.5);
+	// Globe visible when zoom < 2.5
+	let globeVisible = $derived(virtualZoom < 2.5);
+	// Solar system progress: 0 at zoom 0, 1 at zoom -2
+	let solarProgress = $derived(Math.max(0, Math.min(1, -virtualZoom / 2)));
 
 	const toggleMapInteractivity = (enabled: boolean) => {
 		if (!map) return;
@@ -204,6 +220,42 @@
 		visitCity(0);
 	};
 
+	// ─── Cosmic Zoom Wheel Handler ────────────────────────────────────────────
+	const handleCosmicWheel = (e: WheelEvent) => {
+		if (!map) return;
+		
+		const mapZoom = map.getZoom();
+		
+		// Determine if we should enter cosmic mode
+		// Enter when map zoom is at/below 1.5 and user is zooming out
+		if (!isInCosmicMode && mapZoom <= 1.5 && e.deltaY > 0) {
+			isInCosmicMode = true;
+			toggleMapInteractivity(false);
+			virtualZoom = mapZoom;
+		}
+		
+		// If in cosmic mode, handle virtual zoom
+		if (isInCosmicMode) {
+			e.preventDefault();
+			e.stopPropagation();
+			
+			// Scroll speed normalization
+			const delta = e.deltaY * 0.003;
+			virtualZoom = Math.max(-2.5, Math.min(1.5, virtualZoom - delta));
+			
+			// Exit cosmic mode when zooming back in past threshold
+			if (virtualZoom >= 1.5) {
+				isInCosmicMode = false;
+				virtualZoom = 1.5;
+				if (appState === 'idle') {
+					toggleMapInteractivity(true);
+				}
+				// Sync map zoom
+				map.jumpTo({ zoom: 1.5 });
+			}
+		}
+	};
+
 	onMount(async () => {
 		// Dynamic import keeps maplibre-gl out of the SSR bundle entirely
 		const maplibregl = (await import('maplibre-gl')).default;
@@ -223,6 +275,12 @@
 
 			if (e.code === 'Space' && map && appState !== 'zooming_out' && appState !== 'zooming_in') {
 				e.preventDefault(); // prevent scroll
+				
+				// If in cosmic mode, zoom back to map first
+				if (isInCosmicMode) {
+					isInCosmicMode = false;
+					virtualZoom = 13;
+				}
 				
 				if (appState === 'wandering') stopExploration();
 				appState = 'zooming_out';
@@ -264,7 +322,13 @@
 
 			// Update zoom state
 			map.on('zoom', () => {
-				if (map) currentZoom = map.getZoom();
+				if (map) {
+					currentZoom = map.getZoom();
+					// Keep virtualZoom in sync when map controls zoom
+					if (!isInCosmicMode) {
+						virtualZoom = currentZoom;
+					}
+				}
 			});
 
 			// No zoom/navigation buttons
@@ -308,9 +372,18 @@
 
 		window.addEventListener('keydown', handleKeydown);
 
+		// ── Cosmic zoom wheel listener (capture phase to intercept before map) ──
+		const perspectiveContainer = document.querySelector('.perspective-container');
+		if (perspectiveContainer) {
+			perspectiveContainer.addEventListener('wheel', handleCosmicWheel as EventListener, { passive: false, capture: true });
+		}
+
 		// ── Cleanup on component destroy ──────────────────────────────────────
 		return () => {
 			window.removeEventListener('keydown', handleKeydown);
+			if (perspectiveContainer) {
+				perspectiveContainer.removeEventListener('wheel', handleCosmicWheel as EventListener, { capture: true });
+			}
 			stopExploration();
 			map?.remove();
 			map = null;
@@ -320,6 +393,13 @@
 	const handleSearch = async (e: KeyboardEvent) => {
 		if (e.key === 'Enter' && searchQuery.trim().length > 0 && map && appState === 'idle') {
 			isSearching = true;
+			
+			// If in cosmic mode, return to map first
+			if (isInCosmicMode) {
+				isInCosmicMode = false;
+				virtualZoom = 13;
+			}
+			
 			try {
 				const query = encodeURIComponent(searchQuery);
 				const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&addressdetails=1`);
@@ -430,8 +510,14 @@
 		</div>
 	</div>
 
+	<!-- Layer: Starfield (deepest) -->
+	<Starfield visible={starfieldVisible} />
+
+	<!-- Layer: 3D Globe + Solar System -->
+	<GlobeScene visible={globeVisible} progress={solarProgress} />
+
 	<!-- Layer: Map -->
-	<div class="layer map-wrap">
+	<div class="layer map-wrap" style="opacity: {mapOpacity};">
 		<div bind:this={mapContainer} class="map" />
 	</div>
 </div>
@@ -579,7 +665,8 @@
 	.map-wrap {
 		z-index: 10;
 		pointer-events: all; /* Important: Map must receive events */
-		will-change: filter, opacity;
+		will-change: opacity;
+		transition: opacity 0.6s ease;
 	}
 
 	.map {
