@@ -20,6 +20,12 @@
 				type: 'raster',
 				tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],
 				tileSize: 256
+			},
+			terrain: {
+				type: 'raster-dem',
+				tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+				encoding: 'terrarium',
+				tileSize: 256
 			}
 		},
 		layers: [
@@ -203,7 +209,7 @@
 			zoom: 5.5,
 			speed: 0.8,
 			curve: 1.2,
-			pitch: 25,
+			pitch: 35, // slight perspective to complement 3D terrain
 			bearing: 0,
 			essential: true
 		});
@@ -294,7 +300,7 @@
 					
 					// Only apply rotation if the user isn't actively rotating the map themselves
 					if (!map.isRotating()) {
-						map.setBearing(map.getBearing() + (0.5 * dt / 1000) * driftDirection);
+						map.setBearing(map.getBearing() + (1.5 * dt / 1000) * driftDirection);
 					}
 					
 					driftAnimationId = requestAnimationFrame(drift);
@@ -438,7 +444,8 @@
 				style: SATELLITE_STYLE as any,
 				center,
 				zoom: 13,
-				pitch: 25,         // slight tilt — atmospheric but subtle
+				pitch: 45,         // slight tilt — atmospheric but subtle
+				maxPitch: 85,
 				bearing: 0,
 				antialias: true,
 				// ── Remove all default controls ──────────────────────────────
@@ -454,6 +461,10 @@
 						virtualZoom = currentZoom;
 					}
 				}
+			});
+
+			map.on('load', () => {
+				map!.setTerrain({ source: 'terrain', exaggeration: 1.5 });
 			});
 
 			// No zoom/navigation buttons
