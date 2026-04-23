@@ -31,15 +31,20 @@
 	let isDragging = false;
 	let dragStartX = 0;
 	let dragStartY = 0;
-	let cameraOffsetX = 0; // accumulated camera pan offset
-	let cameraOffsetZ = 0;
+	let cameraOffsetX = $state(0); // accumulated camera pan offset
+	let cameraOffsetZ = $state(0);
 	let velocityX = 0; // inertia velocity
 	let velocityZ = 0;
 	let lastDragX = 0;
 	let lastDragY = 0;
-	const DRAG_SENSITIVITY = 0.08;
-	const INERTIA_DECAY = 0.94;
+	
+	let needsReset = $derived(Math.abs(cameraOffsetX) > 2 || Math.abs(cameraOffsetZ) > 2);
+
+	const DRAG_SENSITIVITY = 0.02; // Reduced for slower movement
+	const INERTIA_DECAY = 0.85;    // Stronger damping / less sliding
 	const INERTIA_THRESHOLD = 0.001;
+	const MAX_OFFSET_X = 30;       // Constrain navigation area
+	const MAX_OFFSET_Z = 30;
 
 	// ─── Constants ────────────────────────────────────────────────────────────
 	const EARTH_TEXTURE_URL = 'https://unpkg.com/three-globe@2.41.12/example/img/earth-blue-marble.jpg';
@@ -79,16 +84,36 @@
 		lastDragY = e.clientY;
 
 		// Convert screen drag to camera offset (X = horizontal, Z = depth-ish mapped from vertical)
-		const sensitivity = DRAG_SENSITIVITY * (1 + progress * 2); // scale sensitivity with zoom-out
-		cameraOffsetX -= dx * sensitivity;
-		cameraOffsetZ -= dy * sensitivity;
+		const sensitivity = DRAG_SENSITIVITY * (1 + progress * 1.5); // reduced scaling
+		
+		let dxEff = dx * sensitivity;
+		let dyEff = dy * sensitivity;
 
-		velocityX = -dx * sensitivity;
-		velocityZ = -dy * sensitivity;
+		// Soft resistance when pushing past boundaries
+		if ((cameraOffsetX > MAX_OFFSET_X && dxEff < 0) || (cameraOffsetX < -MAX_OFFSET_X && dxEff > 0)) {
+			dxEff *= 0.15;
+		}
+		if ((cameraOffsetZ > MAX_OFFSET_Z && dyEff < 0) || (cameraOffsetZ < -MAX_OFFSET_Z && dyEff > 0)) {
+			dyEff *= 0.15;
+		}
+
+		cameraOffsetX -= dxEff;
+		cameraOffsetZ -= dyEff;
+
+		// Smooth velocity calculation to prevent flicking spikes
+		velocityX = (velocityX * 0.5) + (-dxEff * 0.5);
+		velocityZ = (velocityZ * 0.5) + (-dyEff * 0.5);
 	};
 
 	const onPointerUp = (_e: PointerEvent) => {
 		isDragging = false;
+	};
+
+	const resetCamera = () => {
+		cameraOffsetX = 0;
+		cameraOffsetZ = 0;
+		velocityX = 0;
+		velocityZ = 0;
 	};
 
 	onMount(async () => {
@@ -323,6 +348,13 @@
 					velocityX = 0;
 					velocityZ = 0;
 				}
+
+				// Soft boundary pull-back
+				const returnSpeed = 0.03;
+				if (cameraOffsetX > MAX_OFFSET_X) cameraOffsetX += (MAX_OFFSET_X - cameraOffsetX) * returnSpeed;
+				if (cameraOffsetX < -MAX_OFFSET_X) cameraOffsetX += (-MAX_OFFSET_X - cameraOffsetX) * returnSpeed;
+				if (cameraOffsetZ > MAX_OFFSET_Z) cameraOffsetZ += (MAX_OFFSET_Z - cameraOffsetZ) * returnSpeed;
+				if (cameraOffsetZ < -MAX_OFFSET_Z) cameraOffsetZ += (-MAX_OFFSET_Z - cameraOffsetZ) * returnSpeed;
 			}
 
 			// ── Earth rotation ──────────────────────────────────────────────
@@ -428,7 +460,18 @@
 	onpointermove={onPointerMove}
 	onpointerup={onPointerUp}
 	onpointercancel={onPointerUp}
-></div>
+	ondblclick={resetCamera}
+>
+	{#if visible && interactive && needsReset}
+		<button class="reset-btn" onclick={resetCamera} aria-label="Recenter view">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<circle cx="12" cy="12" r="3"></circle>
+				<path d="M19 12a7 7 0 0 0-7-7 7 7 0 0 0-7 7 7 7 0 0 0 7 7"></path>
+			</svg>
+			Recenter
+		</button>
+	{/if}
+</div>
 
 <style>
 	.globe-scene {
@@ -455,5 +498,38 @@
 	.globe-scene :global(canvas) {
 		width: 100% !important;
 		height: 100% !important;
+	}
+	.reset-btn {
+		position: absolute;
+		bottom: 40px;
+		left: 50%;
+		transform: translateX(-50%);
+		background: rgba(10, 12, 20, 0.5);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		color: rgba(255, 255, 255, 0.7);
+		font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+		font-size: 13px;
+		letter-spacing: 0.05em;
+		padding: 8px 16px;
+		border-radius: 20px;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		z-index: 10;
+		transition: all 0.3s ease;
+		pointer-events: auto;
+		box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+	}
+	.reset-btn:hover {
+		background: rgba(255, 255, 255, 0.1);
+		color: #fff;
+		border-color: rgba(255, 255, 255, 0.3);
+	}
+	.reset-btn svg {
+		width: 16px;
+		height: 16px;
 	}
 </style>
