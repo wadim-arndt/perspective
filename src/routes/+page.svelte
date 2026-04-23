@@ -58,6 +58,8 @@
 	let globeVisible = $derived(virtualZoom < 2.5);
 	// Solar system progress: 0 at zoom 0, 1 at zoom -2
 	let solarProgress = $derived(Math.max(0, Math.min(1, -virtualZoom / 2)));
+	// Globe is interactive (drag-to-pan) when in cosmic mode
+	let cosmicInteractive = $derived(isInCosmicMode && globeVisible);
 
 	const toggleMapInteractivity = (enabled: boolean) => {
 		if (!map) return;
@@ -514,10 +516,10 @@
 	<Starfield visible={starfieldVisible} />
 
 	<!-- Layer: 3D Globe + Solar System -->
-	<GlobeScene visible={globeVisible} progress={solarProgress} />
+	<GlobeScene visible={globeVisible} progress={solarProgress} interactive={cosmicInteractive} />
 
 	<!-- Layer: Map -->
-	<div class="layer map-wrap" style="opacity: {mapOpacity};">
+	<div class="layer map-wrap" style="opacity: {mapOpacity}; pointer-events: {isInCosmicMode ? 'none' : 'all'};">
 		<div bind:this={mapContainer} class="map" />
 	</div>
 </div>
