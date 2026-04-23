@@ -65,18 +65,19 @@
 	
 	let exploreTimeout: ReturnType<typeof setTimeout> | null = null;
 	let isExplorationCancelled = false;
+	let driftAnimationId: number;
 
 	// ─── Cosmic Zoom State ────────────────────────────────────────────────────
 	let virtualZoom = $state(13); // Extends below 0 for solar system
 	let isInCosmicMode = $state(false); // True when MapLibre is at min zoom and we take over
 
 	// ─── Derived visual states ────────────────────────────────────────────────
-	// Map opacity: full at zoom >= 2.5, fades to 0 at zoom 1
-	let mapOpacity = $derived(Math.max(0, Math.min(1, (virtualZoom - 1) / 1.5)));
+	// Map opacity: full at zoom >= 1.5, fades to 0 at zoom 0.5
+	let mapOpacity = $derived(Math.max(0, Math.min(1, virtualZoom - 0.5)));
 	// Starfield visible when map starts fading
-	let starfieldVisible = $derived(virtualZoom < 2.5);
-	// Globe visible when zoom < 2.5
-	let globeVisible = $derived(virtualZoom < 2.5);
+	let starfieldVisible = $derived(virtualZoom < 1.5);
+	// Globe visible when zoom < 1.5
+	let globeVisible = $derived(virtualZoom < 1.5);
 	// Solar system progress: 0 at zoom 0, 1 at zoom -2
 	let solarProgress = $derived(Math.max(0, Math.min(1, -virtualZoom / 2)));
 	// Globe is interactive (drag-to-pan) when in cosmic mode
@@ -104,6 +105,9 @@
 		if (exploreTimeout) {
 			clearTimeout(exploreTimeout);
 			exploreTimeout = null;
+		}
+		if (typeof driftAnimationId !== 'undefined') {
+			cancelAnimationFrame(driftAnimationId);
 		}
 		if (map) map.stop();
 	};
@@ -268,29 +272,41 @@
 			// 1. Smooth fly to city
 			map!.flyTo({
 				center: [context.lng, context.lat],
-				zoom: 16.5 + Math.random() * 1.5, // between 16.5 and 18 (street/building level for maximum immersion)
+				zoom: 14 + Math.random() * 1.5, // between 14 and 15.5 (observable and spatial, not overly close)
 				speed: 0.3,
 				curve: 1.2,
-				pitch: 55 + Math.random() * 15, // steeper pitch (55-70) for dramatic arrival feel
+				pitch: 45 + Math.random() * 15, // reduced from 55-70 to 45-60 for better overview
 				essential: true
 			});
 
 			map!.once('moveend', () => {
 				if (isExplorationCancelled) return;
 				
-				// 2. Subtle micro-movement (easeTo)
-				map!.easeTo({
-					bearing: map!.getBearing() + (Math.random() > 0.5 ? 15 : -15),
-					pitch: map!.getPitch() + (Math.random() > 0.5 ? 5 : -5),
-					zoom: map!.getZoom() + 0.5,
-					duration: 15000,
-					easing: (t) => t // linear drift
-				});
+				// 2. Continuous background drift that survives user interaction
+				const driftDirection = Math.random() > 0.5 ? 1 : -1;
+				let lastTime = performance.now();
+				
+				const drift = (time: number) => {
+					if (isExplorationCancelled || appState !== 'wandering' || !map) return;
+					
+					const dt = time - lastTime;
+					lastTime = time;
+					
+					// Only apply rotation if the user isn't actively rotating the map themselves
+					if (!map.isRotating()) {
+						map.setBearing(map.getBearing() + (0.5 * dt / 1000) * driftDirection);
+					}
+					
+					driftAnimationId = requestAnimationFrame(drift);
+				};
+				
+				if (typeof driftAnimationId !== 'undefined') cancelAnimationFrame(driftAnimationId);
+				driftAnimationId = requestAnimationFrame(drift);
 
 				// 3. Wait up to 15 seconds, then go to next city
 				exploreTimeout = setTimeout(() => {
 					if (isExplorationCancelled) return;
-					map!.stop(); // Stop the easeTo
+					if (typeof driftAnimationId !== 'undefined') cancelAnimationFrame(driftAnimationId);
 					visitCity(index + 1);
 				}, 15000);
 			});
@@ -304,10 +320,37 @@
 		if (!map) return;
 		
 		const mapZoom = map.getZoom();
+
+		// Custom fixed-anchor zoom for wandering mode
+		if (appState === 'wandering' && currentLocationContext && !isInCosmicMode) {
+			e.preventDefault();
+			e.stopPropagation();
+			
+			if (mapZoom <= 0.5 && e.deltaY > 0) {
+				isInCosmicMode = true;
+				toggleMapInteractivity(false);
+				virtualZoom = mapZoom;
+				return;
+			}
+			
+			let delta = e.deltaY;
+			if (e.deltaMode === 1) delta *= 40;
+			else if (e.deltaMode === 2) delta *= 800;
+
+			const zoomDelta = delta * -0.005;
+			const newZoom = Math.max(0.5, Math.min(22, mapZoom + zoomDelta));
+			
+			// Lock the zoom to center strictly on the active wandering location
+			map.jumpTo({
+				center: [currentLocationContext.lng, currentLocationContext.lat],
+				zoom: newZoom
+			});
+			return;
+		}
 		
 		// Determine if we should enter cosmic mode
-		// Enter when map zoom is at/below 1.5 and user is zooming out
-		if (!isInCosmicMode && mapZoom <= 1.5 && e.deltaY > 0) {
+		// Enter when map zoom is at/below 0.5 and user is zooming out
+		if (!isInCosmicMode && mapZoom <= 0.5 && e.deltaY > 0) {
 			isInCosmicMode = true;
 			toggleMapInteractivity(false);
 			virtualZoom = mapZoom;
@@ -320,17 +363,17 @@
 			
 			// Scroll speed normalization
 			const delta = e.deltaY * 0.003;
-			virtualZoom = Math.max(-2.5, Math.min(1.5, virtualZoom - delta));
+			virtualZoom = Math.max(-2.5, Math.min(0.5, virtualZoom - delta));
 			
 			// Exit cosmic mode when zooming back in past threshold
-			if (virtualZoom >= 1.5) {
+			if (virtualZoom >= 0.5) {
 				isInCosmicMode = false;
-				virtualZoom = 1.5;
-				if (appState === 'idle') {
+				virtualZoom = 0.5;
+				if (appState === 'idle' || appState === 'arrived' || appState === 'wandering') {
 					toggleMapInteractivity(true);
 				}
 				// Sync map zoom
-				map.jumpTo({ zoom: 1.5 });
+				map.jumpTo({ zoom: 0.5 });
 			}
 		}
 	};
@@ -573,7 +616,7 @@
 				{#if currentLocationContext.state}{currentLocationContext.state}, {/if}
 				{currentLocationContext.country}
 				{#if currentLocationContext.distanceFromHome !== undefined}
-					<span class="context-distance">— {currentLocationContext.distanceFromHome} km away</span>
+					<span class="context-distance">— about {currentLocationContext.distanceFromHome} km away</span>
 				{/if}
 			</div>
 		</div>
