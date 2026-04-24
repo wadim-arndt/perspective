@@ -89,5 +89,5 @@ Experience the journey locally on your machine.
 4. **Begin the journey:**
    Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-
+---
 *Designed for the curious. Built for the travelers.*
