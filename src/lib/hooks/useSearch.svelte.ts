@@ -55,6 +55,7 @@ export function useSearch() {
 						perspectiveState.map!.once('moveend', () => {
 							if (perspectiveState.appState === 'zooming_in') {
 								perspectiveState.setAppState('arrived');
+								
 								// Re-enable interactivity
 								const methods = ['dragPan', 'scrollZoom', 'doubleClickZoom', 'touchZoomRotate', 'keyboard'] as const;
 								methods.forEach(m => perspectiveState.map![m].enable());

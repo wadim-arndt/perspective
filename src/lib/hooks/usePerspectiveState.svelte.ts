@@ -66,6 +66,18 @@ class PerspectiveState {
 	addVisitedCity(city: string) {
 		this.visitedCities.add(city);
 	}
+
+	// ─── Computed / Derived ──────────────────────────────────────────────────
+	getLocalTime() {
+		if (!this.currentLocationContext?.timezone) return '--:--';
+		return new Intl.DateTimeFormat('en-US', {
+			timeZone: this.currentLocationContext.timezone,
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit',
+			hour12: true
+		}).format(new Date());
+	}
 }
 
 export const perspectiveState = new PerspectiveState();

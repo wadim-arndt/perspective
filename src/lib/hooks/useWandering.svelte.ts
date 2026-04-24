@@ -74,7 +74,7 @@ export function useWandering() {
 			return;
 		}
 
-		const visitCity = (index: number) => {
+		const visitCity = async (index: number) => {
 			if (isCancelled || index >= cities.length) {
 				perspectiveState.setLocationContext(null);
 				returnToCountry();
@@ -82,6 +82,16 @@ export function useWandering() {
 			}
 
 			const context = cities[index];
+			
+			// Ensure we have a timezone for the local time display
+			if (!context.timezone) {
+				const fullData = await geocodingService.reverseGeocode(context.lng, context.lat);
+				if (fullData) {
+					context.timezone = fullData.timezone;
+					context.population = fullData.population;
+				}
+			}
+
 			context.distanceFromHome = calculateDistance(
 				perspectiveState.homeLocation[1], 
 				perspectiveState.homeLocation[0], 

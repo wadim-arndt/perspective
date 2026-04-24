@@ -23,6 +23,26 @@
 	let perspectiveContainer: HTMLDivElement;
 	let searchQuery = $state('');
 
+	// ─── Live Time ────────────────────────────────────────────────────────────
+	let now = $state(new Date());
+	let localTime = $derived.by(() => {
+		if (!pState.currentLocationContext?.timezone) return '--:--';
+		return new Intl.DateTimeFormat('en-US', {
+			timeZone: pState.currentLocationContext.timezone,
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit',
+			hour12: true
+		}).format(now);
+	});
+
+	const formatPopulation = (pop: number | string | undefined) => {
+		if (!pop || pop === 'N/A') return 'Unknown';
+		const n = typeof pop === 'string' ? parseInt(pop) : pop;
+		if (isNaN(n)) return pop;
+		return new Intl.NumberFormat('en-US').format(n);
+	};
+
 	// ─── Declarative visual state ─────────────────────────────────────────────
 	let mapOpacity = $derived(Math.max(0, Math.min(1, pState.virtualZoom - 0.5)));
 	let starfieldVisible = $derived(pState.virtualZoom < 1.5);
@@ -43,6 +63,10 @@
 	};
 
 	onMount(async () => {
+		const timer = setInterval(() => {
+			now = new Date();
+		}, 1000);
+
 		const maplibregl = (await import('maplibre-gl')).default;
 
 		const startInit = (center: [number, number]) => {
@@ -102,13 +126,23 @@
 	{#if pState.appState === 'wandering' && pState.currentLocationContext}
 		<div class="location-context">
 			<div class="context-city">{pState.currentLocationContext.city}</div>
-			<div class="context-region">
-				{#if pState.currentLocationContext.state}{pState.currentLocationContext.state}, {/if}
-				{pState.currentLocationContext.country}
-				{#if pState.currentLocationContext.distanceFromHome !== undefined}
-					<span class="context-distance">— about {pState.currentLocationContext.distanceFromHome} km away</span>
-				{/if}
+			<div class="context-country">{pState.currentLocationContext.country}</div>
+			<div class="context-info-bar">
+				<div class="info-item">
+					<span class="info-label">Population</span>
+					<span class="info-value">{formatPopulation(pState.currentLocationContext.population)}</span>
+				</div>
+				<div class="info-divider"></div>
+				<div class="info-item">
+					<span class="info-label">Local Time</span>
+					<span class="info-value">{localTime}</span>
+				</div>
 			</div>
+			{#if pState.currentLocationContext.distanceFromHome !== undefined}
+				<div class="context-distance">
+					<span>{new Intl.NumberFormat('en-US').format(pState.currentLocationContext.distanceFromHome)} km from home</span>
+				</div>
+			{/if}
 		</div>
 	{/if}
 
@@ -189,35 +223,104 @@
 
 	.location-context {
 		position: absolute;
-		bottom: 80px;
+		bottom: 60px;
 		left: 60px;
 		z-index: 40;
 		color: #fff;
 		font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
 		pointer-events: none;
-		text-shadow: 0 4px 16px rgba(0, 0, 0, 0.8), 0 1px 4px rgba(0, 0, 0, 0.5);
-		animation: fade-in 1s ease-out;
+		background: rgba(15, 20, 35, 0.35);
+		backdrop-filter: blur(24px) saturate(180%);
+		-webkit-backdrop-filter: blur(24px) saturate(180%);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		border-radius: 24px;
+		padding: 32px 40px;
+		box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+		animation: fade-in-glass 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+		max-width: 420px;
 	}
+	
+	@keyframes fade-in-glass {
+		from { opacity: 0; transform: translateY(20px) scale(0.98); filter: blur(10px); }
+		to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+	}
+
 	.context-city {
 		font-size: 42px;
-		font-weight: 300;
-		letter-spacing: 0.02em;
-		margin-bottom: 8px;
-		line-height: 1.1;
+		font-weight: 200;
+		letter-spacing: -0.01em;
+		margin-bottom: 0px;
+		line-height: 1;
+		color: #fff;
 	}
-	.context-region {
-		font-size: 15px;
-		font-weight: 500;
-		color: rgba(255, 255, 255, 0.75);
-		letter-spacing: 0.1em;
+	.context-country {
+		font-size: 13px;
+		font-weight: 600;
+		color: rgba(255, 255, 255, 0.4);
+		letter-spacing: 0.2em;
 		text-transform: uppercase;
+		margin-bottom: 28px;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.context-country::before {
+		content: '';
+		display: block;
+		width: 4px;
+		height: 4px;
+		border-radius: 50%;
+		background: rgba(255, 255, 255, 0.3);
+	}
+	.context-info-bar {
+		display: flex;
+		align-items: center;
+		gap: 32px;
+		margin-bottom: 24px;
+	}
+	.info-item {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	.info-label {
+		font-size: 10px;
+		font-weight: 700;
+		color: rgba(255, 255, 255, 0.3);
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+	}
+	.info-value {
+		font-size: 17px;
+		font-weight: 400;
+		color: rgba(255, 255, 255, 0.95);
+		font-variant-numeric: tabular-nums;
+	}
+	.info-divider {
+		width: 1px;
+		height: 28px;
+		background: rgba(255, 255, 255, 0.08);
+	}
+	.context-distance {
+		font-size: 11px;
+		font-weight: 500;
+		color: rgba(255, 255, 255, 0.35);
+		letter-spacing: 0.04em;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding-top: 20px;
+		border-top: 1px solid rgba(255, 255, 255, 0.06);
+	}
+	.context-distance span {
 		display: flex;
 		align-items: center;
 		gap: 6px;
 	}
-	.context-distance {
-		color: rgba(255, 255, 255, 0.5);
-		font-variant-numeric: tabular-nums;
+	.context-distance span::before {
+		content: '📍';
+		font-size: 12px;
+		opacity: 0.7;
 	}
 
 	@keyframes fade-in {
