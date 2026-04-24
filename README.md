@@ -89,16 +89,5 @@ Experience the journey locally on your machine.
 4. **Begin the journey:**
    Open [http://localhost:5173](http://localhost:5173) in your browser.
 
----
-
-## 🔭 Future Vision
-
-The journey continues. Future iterations of **Perspective** aim to introduce:
-
-*   **Atmospheric Audio:** Generative soundscapes that shift based on altitude and location.
-*   **Smarter City Selection:** Prioritizing cultural capitals and landmarks during the Wandering sequence.
-*   **Rich Data Integration:** Subtly introducing local metadata (timezones, weather, or brief cultural facts).
-
----
 
 *Designed for the curious. Built for the travelers.*
