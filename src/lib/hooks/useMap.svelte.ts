@@ -8,6 +8,7 @@ export function useMap() {
 			style: SATELLITE_STYLE as any,
 			center,
 			zoom: 13,
+			minZoom: 0,
 			pitch: 45,
 			maxPitch: 85,
 			bearing: 0,

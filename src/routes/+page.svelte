@@ -44,10 +44,10 @@
 	};
 
 	// ─── Declarative visual state ─────────────────────────────────────────────
-	let mapOpacity = $derived(Math.max(0, Math.min(1, pState.virtualZoom - 0.5)));
-	let starfieldVisible = $derived(pState.virtualZoom < 1.5);
-	let globeVisible = $derived(pState.virtualZoom < 1.5);
-	let solarProgress = $derived(Math.max(0, Math.min(1, -pState.virtualZoom / 2)));
+	let mapOpacity = $derived(Math.max(0, Math.min(1, (pState.virtualZoom - 2.0) * 2))); // Fades between 2.0 and 2.5
+	let starfieldVisible = $derived(pState.virtualZoom < 4.0);
+	let globeVisible = $derived(pState.virtualZoom < 4.0);
+	let solarProgress = $derived(Math.max(0, Math.min(1, (1.5 - pState.virtualZoom) / 3))); // Starts at zoom 1.5, full at -1.5
 	let cosmicInteractive = $derived(pState.isInCosmicMode && globeVisible);
 
 	// ─── Handlers ─────────────────────────────────────────────────────────────

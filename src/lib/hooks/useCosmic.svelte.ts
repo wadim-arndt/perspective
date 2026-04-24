@@ -12,7 +12,7 @@ export function useCosmic() {
 			e.preventDefault();
 			e.stopPropagation();
 			
-			if (mapZoom <= 0.5 && e.deltaY > 0) {
+			if (mapZoom <= 2.0 && e.deltaY > 0) {
 				perspectiveState.setCosmicMode(true);
 				const methods = ['dragPan', 'scrollZoom', 'doubleClickZoom', 'touchZoomRotate', 'keyboard'] as const;
 				methods.forEach(m => map[m].disable());
@@ -25,7 +25,7 @@ export function useCosmic() {
 			else if (e.deltaMode === 2) delta *= 800;
 
 			const zoomDelta = delta * -0.005;
-			const newZoom = Math.max(0.5, Math.min(22, mapZoom + zoomDelta));
+			const newZoom = Math.max(0, Math.min(22, mapZoom + zoomDelta));
 			
 			map.jumpTo({
 				center: [perspectiveState.currentLocationContext.lng, perspectiveState.currentLocationContext.lat],
@@ -34,7 +34,8 @@ export function useCosmic() {
 			return;
 		}
 		
-		if (!perspectiveState.isInCosmicMode && mapZoom <= 0.5 && e.deltaY > 0) {
+		if (!perspectiveState.isInCosmicMode && mapZoom <= 2.0 && e.deltaY > 0) {
+			e.preventDefault();
 			perspectiveState.setCosmicMode(true);
 			const methods = ['dragPan', 'scrollZoom', 'doubleClickZoom', 'touchZoomRotate', 'keyboard'] as const;
 			methods.forEach(m => map[m].disable());
@@ -46,16 +47,16 @@ export function useCosmic() {
 			e.stopPropagation();
 			
 			const delta = e.deltaY * 0.002;
-			perspectiveState.setVirtualZoom(Math.max(-2.5, Math.min(0.5, perspectiveState.virtualZoom - delta)));
+			perspectiveState.setVirtualZoom(Math.max(-2.5, Math.min(2.0, perspectiveState.virtualZoom - delta)));
 			
-			if (perspectiveState.virtualZoom >= 0.5) {
+			if (perspectiveState.virtualZoom >= 2.0) {
 				perspectiveState.setCosmicMode(false);
-				perspectiveState.setVirtualZoom(0.5);
+				perspectiveState.setVirtualZoom(2.0);
 				if (['idle', 'arrived', 'wandering'].includes(perspectiveState.appState)) {
 					const methods = ['dragPan', 'scrollZoom', 'doubleClickZoom', 'touchZoomRotate', 'keyboard'] as const;
 					methods.forEach(m => map[m].enable());
 				}
-				map.jumpTo({ zoom: 0.5 });
+				map.jumpTo({ zoom: 2.0 });
 			}
 		}
 	};
